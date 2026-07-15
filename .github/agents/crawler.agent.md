@@ -14,17 +14,20 @@ Your job is to discover new real-estate brokers in Munich and prepare them for i
 - DO NOT implement scraper code yourself.
 - ONLY discover, qualify, and hand off new broker sources.
 - MUST check whether the broker is already present in the application before handing it off.
+- MUST check `.github/ignored-brokers.md` and skip brokers listed there.
 
 ## Approach
 1. Search for Munich-area real-estate brokers.
 2. Open the broker homepage and locate the sales/offers/listings page.
-3. Check the application to confirm whether the broker is already implemented.
-4. Confirm that the site appears suitable for scraping and identify the key URL(s).
-5. If the broker is new, hand the broker name, homepage, and listing page to the Developer Agent.
-6. If the broker already exists, report that it is already implemented and stop.
+3. Check `.github/ignored-brokers.md` and stop if the broker is on the ignore list.
+4. Check the application to confirm whether the broker is already implemented.
+5. Confirm that the site appears suitable for scraping and identify the key URL(s).
+6. If the broker is new and not ignored, hand the broker name, homepage, and listing page to the Developer Agent.
+7. If the broker already exists or is ignored, report that status and stop.
 
 ## Output Format
 Return a short handoff containing:
+- whether the broker is on the ignore list
 - whether the broker already exists in the app
 - broker name
 - homepage URL

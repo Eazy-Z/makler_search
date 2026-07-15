@@ -18,6 +18,7 @@ ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
 FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
 BARTSCH_URL = 'https://www.bartsch-immo.de/immobilien-vermarktungsart/kauf/'
 SCHNEIDER_URL = 'https://www.immobilienschneider.com/kaufangebote/'
+IGNORED_BROKERS = {'aigner'}
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -38,7 +39,6 @@ BROKER_LABELS = {
     'firstplace': 'First Place',
     'bartsch': 'Bartsch',
     'schneider': 'Schneider',
-    'aigner': 'Aigner Immobilien',
     'graf': 'Graf Immobilien',
     'riedel': 'RIEDEL Immobilien',
     'engel': 'Engel & Völkers Munich',
@@ -655,7 +655,6 @@ BROKER_SOURCES = [
     ('firstplace', fetch_firstplace_listings),
     ('bartsch', fetch_bartsch_listings),
     ('schneider', fetch_schneider_listings),
-    ('aigner', fetch_aigner_listings),
     ('graf', fetch_graf_listings),
     ('riedel', fetch_riedel_listings),
     ('engel', fetch_engel_listings),

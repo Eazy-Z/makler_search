@@ -30,9 +30,10 @@ def test_new_sources_return_data():
 
 
 def test_new_broker_labels_are_registered():
-    for key in ['aigner', 'graf', 'riedel', 'engel', 'weichselgartner']:
+    for key in ['graf', 'riedel', 'engel', 'weichselgartner']:
         assert key in app.BROKER_LABELS
         assert app.BROKER_LABELS[key]
+    assert 'aigner' in app.IGNORED_BROKERS
 
 
 def test_new_source_parsers_handle_source_specific_markup():
