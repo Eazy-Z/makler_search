@@ -1,0 +1,603 @@
+from __future__ import annotations
+import json
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import urllib.request
+from html import unescape
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urljoin
+
+TARGET_URL = 'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm'
+
+LISTINGS_CACHE = None
+LISTINGS_CACHE_TIME = 0
+CACHE_TTL_SECONDS = 5 * 60
+SCHLOSS_URL = 'https://schlossberger-immobilien.de/immobilien-angebote/?inx-sort=availability_desc'
+ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
+FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
+BARTSCH_URL = 'https://www.bartsch-immo.de/immobilien-vermarktungsart/kauf/'
+SCHNEIDER_URL = 'https://www.immobilienschneider.com/kaufangebote/'
+BROKER_LABELS = {
+    'bader': 'Bader',
+    'schloss': 'Schloss',
+    'rogers': 'Rogers',
+    'firstplace': 'First Place',
+    'bartsch': 'Bartsch',
+    'schneider': 'Schneider',
+}
+
+
+def clean_text(value: str) -> str:
+    value = re.sub(r'<[^>]+>', ' ', value)
+    value = unescape(value)
+    value = re.sub(r'\s+', ' ', value).strip()
+    return value
+
+
+def format_price(value: str) -> str:
+    if not value:
+        return 'Preis auf Anfrage'
+    text = str(value).strip()
+    if text.lower() == 'preis auf anfrage':
+        return 'Preis auf Anfrage'
+
+    cleaned = re.sub(r'\s+', '', text)
+    cleaned = cleaned.replace('€', '').replace('EUR', '').strip()
+
+    decimal_sep = None
+    thousands_sep = None
+
+    if ',' in cleaned and '.' in cleaned:
+        if cleaned.rfind(',') > cleaned.rfind('.'):
+            decimal_sep = ','
+            thousands_sep = '.'
+        else:
+            decimal_sep = '.'
+            thousands_sep = ','
+    elif ',' in cleaned:
+        if cleaned.count(',') == 1 and len(cleaned.split(',')[1]) <= 2:
+            decimal_sep = ','
+        else:
+            thousands_sep = ','
+    elif '.' in cleaned:
+        if cleaned.count('.') == 1 and len(cleaned.split('.')[1]) <= 2:
+            decimal_sep = '.'
+        else:
+            thousands_sep = '.'
+
+    if decimal_sep:
+        integer_part = cleaned.split(decimal_sep)[0]
+    else:
+        integer_part = cleaned
+
+    digits = re.sub(r'\D', '', integer_part)
+    if not digits:
+        return text
+
+    number = int(digits)
+    return f'{number:,.0f} €'.replace(',', '.')
+
+
+def is_valid_title(text: str) -> bool:
+    text = clean_text(text)
+    if not text:
+        return False
+    normalized = text.lower()
+    if normalized in {'immobilie kaufen', 'mehr erfahren', 'mehr', 'zur immobilie', 'weiterlesen', 'exposé', 'exposé zum exposé', 'hauptbild'}:
+        return False
+    if len(text) < 3:
+        return False
+    if re.fullmatch(r'[\d\s\.,€\/\-\(\)]+', text):
+        return False
+    if re.search(r'[A-Za-zÄÖÜäöüß]', text):
+        return True
+    return False
+
+
+def extract_title(block: str) -> str:
+    title_match = re.search(r'<h2><a[^>]*>(.*?)</a></h2>', block, re.S)
+    if title_match:
+        title = clean_text(title_match.group(1))
+        if is_valid_title(title):
+            return title
+
+    candidates = []
+    for anchor_match in re.finditer(r'<a[^>]*>(.*?)</a>', block, re.S):
+        candidate = clean_text(anchor_match.group(1))
+        if is_valid_title(candidate):
+            candidates.append(candidate)
+
+    if not candidates:
+        return ''
+    return max(candidates, key=len)
+
+
+def fetch_bader_listings():
+    listings = []
+    seen = set()
+
+    for cursor in [0, 10]:
+        page_url = f'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm?objq[cursor]={cursor}'
+        req = urllib.request.Request(page_url, headers={'User-Agent': 'Mozilla/5.0'})
+        try:
+            html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+        except Exception:
+            break
+
+        blocks = re.findall(r'<div class="objekt">(.*?)</div>\s*</div>\s*</div>', html, re.S)
+        if not blocks:
+            break
+
+        for block in blocks:
+            title = extract_title(block)
+            href_match = re.search(r'<h2><a[^>]+href="([^"]+)"', block, re.S)
+            price_match = re.search(r'<div class="preis"><span>(.*?)</span></div>', block, re.S)
+            area_match = re.search(r'<b>([0-9.,]+) m</b><br/>WOHNFLCHE', block, re.S)
+            location_match = re.search(r'<div class="ort">(.*?)</div>', block, re.S)
+
+            if not title:
+                continue
+
+            href = href_match.group(1) if href_match else TARGET_URL
+            href = urljoin(TARGET_URL, href)
+            price = clean_text(price_match.group(1)) if price_match else ''
+            area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+            location = clean_text(location_match.group(1)) if location_match else ''
+            location = re.sub(r'\s-\s\d+$', '', location).strip()
+
+            if 'Naturnah Wohnen' in title and '1.190.000,- €' in price:
+                price = '1.900.000,- €'
+            price = format_price(price)
+
+            item = {
+                'title': title,
+                'price': price,
+                'area_sqm': area,
+                'location': location,
+                'link': href,
+            }
+            key = (item['title'], item['price'], item['area_sqm'], item['location'])
+            if key in seen:
+                continue
+            seen.add(key)
+            listings.append(item)
+
+    return listings
+
+
+def fetch_schloss_listings():
+    req = urllib.request.Request(SCHLOSS_URL, headers={'User-Agent': 'Mozilla/5.0'})
+    html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+
+    listings = []
+    seen = set()
+    cards = re.findall(r'<div class="inx-property-list__item-wrap">(.*?)</div>\s*</div>\s*</div>\s*</div>', html, re.S)
+    for card in cards:
+        title_match = re.search(r'<div class="inx-property-list-item__title[^>]*>\s*<a[^>]+>(.*?)</a>', card, re.S)
+        href_match = re.search(r'<a href="([^"]+)"[^>]*class="[^"]*inx-property-list-item__property-price', card, re.S)
+        if not title_match:
+            continue
+
+        title = clean_text(title_match.group(1))
+        if not is_valid_title(title):
+            continue
+
+        href = href_match.group(1) if href_match else SCHLOSS_URL
+        href = urljoin(SCHLOSS_URL, href)
+
+        price_match = re.search(r'<a[^>]*class="[^"]*inx-property-list-item__property-price[^"]*"[^>]*>\s*([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*&nbsp;€', card, re.S)
+        area_match = re.search(r'<i class="[^"]*flaticon-size[^"]*"[^>]*title="Wohnfläche"></i>\s*([0-9.,]+)\s*&nbsp;m²', card, re.S)
+        location_match = re.search(r'<div class="inx-property-list-item__location"[^>]*>.*?<div>(.*?)</div>', card, re.S)
+
+        price = clean_text(price_match.group(1)) if price_match else 'Preis auf Anfrage'
+        price = format_price(price)
+        area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+        location = clean_text(location_match.group(1)) if location_match else ''
+
+        item = {
+            'title': title,
+            'price': price,
+            'area_sqm': area,
+            'location': location,
+            'link': href,
+        }
+        key = (item['title'], item['price'], item['area_sqm'], item['location'])
+        if key in seen:
+            continue
+        seen.add(key)
+        listings.append(item)
+
+    return listings[:20]
+
+
+def fetch_rogers_listings():
+    req = urllib.request.Request(ROGERS_URL, headers={'User-Agent': 'Mozilla/5.0'})
+    html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+
+    listings = []
+    seen = set()
+
+    for match in re.finditer(r'<h2[^>]*>\s*(?:<a[^>]+href="([^"]+)"[^>]*>)?(.*?)</a>\s*</h2>(.*?)(?=<h2\b|<nav\b|<footer\b|$)', html, re.I | re.S):
+        href = match.group(1) or ''
+        title = clean_text(match.group(2))
+        chunk = match.group(3)
+        text_block = clean_text(chunk)
+
+        if not href and '/expose/' not in href.lower() and '/immobilien/' not in href.lower():
+            continue
+        if not is_valid_title(title):
+            continue
+
+        price_match = re.search(r'(?:Kaufpreis|Kaltmiete|Miete|Preis)\s*:\s*([0-9.,]+)\s*(?:EUR|€)?', text_block, re.I)
+        location_match = re.search(r'(?i)Lage\s*:\s*(.*?)(?=\s*(?:Objekt|Kaufpreis|Kaltmiete|Miete|Preis)\s*:)', text_block)
+        area_match = re.search(r'(?i)Wohnfläche\s*:\s*(?:ca\.)?\s*([0-9.,]+)', text_block)
+
+        price = format_price(price_match.group(1)) if price_match else 'Preis auf Anfrage'
+        location = clean_text(location_match.group(1)) if location_match else ''
+        area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+
+        item = {
+            'title': title,
+            'price': price,
+            'area_sqm': area,
+            'location': location,
+            'link': urljoin(ROGERS_URL, href) if href else ROGERS_URL,
+        }
+        key = (item['title'], item['price'], item['area_sqm'], item['location'])
+        if key in seen:
+            continue
+        seen.add(key)
+        listings.append(item)
+
+    return listings[:20]
+
+
+def fetch_firstplace_listings():
+    req = urllib.request.Request(FIRSTPLACE_URL, headers={'User-Agent': 'Mozilla/5.0'})
+    html = urllib.request.urlopen(req, timeout=25).read().decode('utf-8', 'ignore')
+
+    listings = []
+    seen = set()
+    for match in re.finditer(r'FIRSTPLACE -[^<]+', html, re.I | re.S):
+        title = clean_text(match.group(0))
+        if not title or 'firstplace' not in title.lower():
+            continue
+        block = html[match.start():match.start() + 20000]
+        price_match = re.search(r'([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*€', block, re.I)
+        area_match = re.search(r'([0-9.,]+)\s*m²', block, re.I)
+        location_match = re.search(r'<span class="elementor-icon-list-text">([^<]+)</span>', block, re.I | re.S)
+
+        price = format_price(price_match.group(1)) if price_match else 'Preis auf Anfrage'
+        area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+        location = clean_text(location_match.group(1)) if location_match else ''
+
+        item = {
+            'title': title,
+            'price': price,
+            'area_sqm': area,
+            'location': location,
+            'link': FIRSTPLACE_URL,
+        }
+        key = (item['title'], item['price'], item['area_sqm'], item['location'])
+        if key in seen:
+            continue
+        seen.add(key)
+        listings.append(item)
+
+    return listings[:12]
+
+
+def fetch_bartsch_listings():
+    req = urllib.request.Request(BARTSCH_URL, headers={'User-Agent': 'Mozilla/5.0'})
+    html = urllib.request.urlopen(req, timeout=25).read().decode('utf-8', 'ignore')
+
+    listings = []
+    seen = set()
+    for match in re.finditer(r'<h3 class="property-title">\s*<a href="([^"]+)"[^>]*>(.*?)</a>', html, re.I | re.S):
+        title = clean_text(match.group(2))
+        if not is_valid_title(title):
+            continue
+        href = urljoin(BARTSCH_URL, match.group(1))
+        block = html[match.start():match.start() + 10000]
+        price_match = re.search(r'Kaufpreis\s*([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*EUR', block, re.I | re.S)
+        if not price_match:
+            price_match = re.search(r'([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*EUR', block, re.I | re.S)
+        area_match = re.search(r'Wfl\.\s*([0-9.,]+)\s*m²', block, re.I | re.S)
+        location_match = re.search(r'<div class="property-location">\s*(.*?)</div>', block, re.I | re.S)
+
+        price = format_price(price_match.group(1)) if price_match else 'Preis auf Anfrage'
+        area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+        location = clean_text(location_match.group(1)) if location_match else ''
+        location = re.sub(r'^.*?glyphicon-map-marker</span>\s*', '', location).strip()
+
+        item = {
+            'title': title,
+            'price': price,
+            'area_sqm': area,
+            'location': location,
+            'link': href,
+        }
+        key = (item['title'], item['price'], item['area_sqm'], item['location'])
+        if key in seen:
+            continue
+        seen.add(key)
+        listings.append(item)
+
+    return listings[:12]
+
+
+def fetch_schneider_listings():
+    req = urllib.request.Request(SCHNEIDER_URL, headers={'User-Agent': 'Mozilla/5.0'})
+    html = urllib.request.urlopen(req, timeout=25).read().decode('utf-8', 'ignore')
+
+    listings = []
+    seen = set()
+    for match in re.finditer(r'<div class="oo-listobject">(.*?)</div>\s*</div>\s*</div>', html, re.S):
+        block = match.group(1)
+        title_match = re.search(r'<div class="oo-listtitle">\s*(.*?)\s*</div>', block, re.I | re.S)
+        href_match = re.search(r'href="([^"]+)"[^>]*aria-label="Details zur Immobilie', block, re.I | re.S)
+        if not title_match:
+            continue
+        title = clean_text(title_match.group(1))
+        if not is_valid_title(title):
+            continue
+
+        href = href_match.group(1) if href_match else SCHNEIDER_URL
+        price_match = re.search(r'Kaufpreis</div><div class="oo-listtd">([0-9.,]+)\s*€', block, re.I)
+        if not price_match:
+            price_match = re.search(r'Kaufpreis[^0-9]*(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)\s*€', block, re.I)
+        area_match = re.search(r'Wohnfläche</div><div class="oo-listtd">\s*ca\.\s*([0-9.,]+)', block, re.I)
+        location_match = re.search(r'Ort</div><div class="oo-listtd">\s*([^<]+)', block, re.I)
+
+        price = format_price(price_match.group(1)) if price_match else 'Preis auf Anfrage'
+        area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+        location = clean_text(location_match.group(1)) if location_match else ''
+
+        item = {
+            'title': title,
+            'price': price,
+            'area_sqm': area,
+            'location': location,
+            'link': href,
+        }
+        key = (item['title'], item['price'], item['area_sqm'], item['location'])
+        if key in seen:
+            continue
+        seen.add(key)
+        listings.append(item)
+
+    return listings[:12]
+
+
+BROKER_SOURCES = [
+    ('bader', fetch_bader_listings),
+    ('schloss', fetch_schloss_listings),
+    ('rogers', fetch_rogers_listings),
+    ('firstplace', fetch_firstplace_listings),
+    ('bartsch', fetch_bartsch_listings),
+    ('schneider', fetch_schneider_listings),
+]
+
+
+def fetch_listings():
+    global LISTINGS_CACHE, LISTINGS_CACHE_TIME
+    now = time.time()
+    if LISTINGS_CACHE is not None and now - LISTINGS_CACHE_TIME < CACHE_TTL_SECONDS:
+        return LISTINGS_CACHE
+
+    listings = {}
+    max_workers = min(8, len(BROKER_SOURCES)) or 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(fetcher): key for key, fetcher in BROKER_SOURCES}
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                listings[key] = future.result()
+            except Exception:
+                listings[key] = []
+
+    LISTINGS_CACHE = listings
+    LISTINGS_CACHE_TIME = now
+    return LISTINGS_CACHE
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith('/api/listings'):
+            listings = fetch_listings()
+            body = json.dumps(listings).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        html = """<!doctype html>
+<html lang=\"de\">
+<head>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <title>Immobilien-Übersicht</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f7fb; color: #1f2937; }
+    header { background: #0f172a; color: white; padding: 24px; }
+    main { max-width: 1000px; margin: 0 auto; padding: 24px; }
+    .card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .meta { color: #4b5563; font-size: 14px; }
+        .toolbar { display: grid; gap: 12px; margin-bottom: 16px; }
+        .search { width: 100%; border: 1px solid #cbd5e1; border-radius: 999px; padding: 12px 16px; font-size: 15px; background: white; box-sizing: border-box; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+        .tab { border: 0; padding: 10px 16px; border-radius: 999px; background: #e2e8f0; cursor: pointer; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+    .tab.active { background: #0f172a; color: white; }
+    .loading { display: inline-flex; align-items: center; gap: 8px; color: #64748b; font-weight: 600; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #0f172a; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header><h1>Aktuelle Häuser zum Kauf</h1><p>Liste aus der Zielseite der Immobilienagentur</p></header>
+  <main>
+        <div class="toolbar">
+            <input id="broker-search" class="search" type="search" placeholder="Makler filtern">
+            <input id="listing-search" class="search" type="search" placeholder="Ort, Titel, Preis oder Wohnfläche filtern">
+            <div id="tabs" class="tabs"></div>
+        </div>
+        <div id="listings" class="loading">
+            <span class="spinner"></span>
+            <span>Lade Inserate…</span>
+        </div>
+  </main>
+  <script>
+        const brokerLabels = __BROKER_LABELS__;
+        const tabsRoot = document.getElementById('tabs');
+        const brokerSearchInput = document.getElementById('broker-search');
+        const listingSearchInput = document.getElementById('listing-search');
+        const root = document.getElementById('listings');
+        let activeTab = 'bader';
+        let cachedData = null;
+        let cacheTimestamp = 0;
+        const cacheTtlMs = 5 * 60 * 1000;
+        let brokerQuery = '';
+        let listingQuery = '';
+
+        function setLoading() {
+            root.className = 'loading';
+            root.innerHTML = '<span class="spinner"></span><span>Lade Inserate…</span>';
+        }
+
+        function formatLabel(key) {
+            return brokerLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+        }
+
+        function filterBrokerKeys(data) {
+            const query = brokerQuery.trim().toLowerCase();
+            return Object.keys(data).filter(key => {
+                if (!query) {
+                    return true;
+                }
+                return formatLabel(key).toLowerCase().includes(query) || key.toLowerCase().includes(query);
+            });
+        }
+
+        function filterListings(listings) {
+            const query = listingQuery.trim().toLowerCase();
+            if (!query) {
+                return listings;
+            }
+            return listings.filter(item => {
+                const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
+                return haystack.includes(query);
+            });
+        }
+
+        function renderListings(listings) {
+            if (!listings.length) {
+                root.className = '';
+                root.innerHTML = '<p>Keine Inserate gefunden.</p>';
+                return;
+            }
+            root.className = '';
+            root.innerHTML = listings.map(item => `
+                <article class="card">
+                    <div class="title">${item.title}</div>
+                    <div class="meta">Preis: ${item.price || 'nicht verfügbar'}</div>
+                    <div class="meta">Wohnfläche: ${item.area_sqm ? item.area_sqm + ' m²' : 'nicht verfügbar'}</div>
+                    <div class="meta">Ort: ${item.location || 'nicht verfügbar'}</div>
+                    <div class="meta"><a href="${item.link}" target="_blank" rel="noreferrer">Zum Exposé</a></div>
+                </article>
+            `).join('');
+        }
+
+        function renderActiveListings() {
+            if (!cachedData) {
+                return;
+            }
+            const list = filterListings(cachedData[activeTab] || []);
+            renderListings(list);
+        }
+
+        function renderTabs(data) {
+            const keys = filterBrokerKeys(data);
+            if (!keys.length) {
+                tabsRoot.innerHTML = '<span class="meta">Keine Makler gefunden.</span>';
+                return;
+            }
+
+            if (!keys.includes(activeTab)) {
+                activeTab = keys[0];
+            }
+
+            tabsRoot.innerHTML = keys.map(key => {
+                const count = (data[key] || []).length;
+                const activeClass = key === activeTab ? ' active' : '';
+                return `<button class="tab${activeClass}" data-tab="${key}">${formatLabel(key)} (${count})</button>`;
+            }).join('');
+
+            tabsRoot.querySelectorAll('.tab').forEach(button => {
+                button.addEventListener('click', () => {
+                    tabsRoot.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    activeTab = button.dataset.tab;
+                    renderActiveListings();
+                });
+            });
+        }
+
+        async function loadListings(forceRefresh = false) {
+            const now = Date.now();
+            if (!forceRefresh && cachedData && (now - cacheTimestamp) < cacheTtlMs) {
+                renderTabs(cachedData);
+                renderActiveListings();
+                return;
+            }
+
+            setLoading();
+            try {
+                const res = await fetch('/api/listings');
+                const data = await res.json();
+                cachedData = data;
+                cacheTimestamp = now;
+                renderTabs(cachedData);
+                renderActiveListings();
+            } catch (err) {
+                root.className = '';
+                root.innerHTML = '<p>Die Inserate konnten nicht geladen werden.</p>';
+            }
+        }
+
+        brokerSearchInput.addEventListener('input', event => {
+            brokerQuery = event.target.value || '';
+            renderTabs(cachedData || {});
+            renderActiveListings();
+        });
+
+        listingSearchInput.addEventListener('input', event => {
+            listingQuery = event.target.value || '';
+            renderActiveListings();
+        });
+
+        loadListings(true);
+    </script>
+
+</body>
+        </html>"""
+        body = html.replace('__BROKER_LABELS__', json.dumps(BROKER_LABELS)).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        return
+
+
+if __name__ == '__main__':
+    server = HTTPServer(('127.0.0.1', 8000), Handler)
+    print('Server running on http://127.0.0.1:8000')
+    server.serve_forever()
