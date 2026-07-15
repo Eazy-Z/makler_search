@@ -18,6 +18,19 @@ ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
 FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
 BARTSCH_URL = 'https://www.bartsch-immo.de/immobilien-vermarktungsart/kauf/'
 SCHNEIDER_URL = 'https://www.immobilienschneider.com/kaufangebote/'
+AIGNER_URLS = [
+    'https://www.aigner-immobilien.de/immobilien/',
+    'https://www.aigner-immobilien.de/objekte/',
+    'https://www.aigner-immobilien.de/kaufen/',
+]
+GRAF_URL = 'https://www.grafimmo.de/angebote/'
+RIEDEL_URL = 'https://www.riedel-immobilien.de/angebote/'
+ENGEL_URLS = [
+    'https://www.engelvoelkers.com/de/de/immobilien/res/kaufen/immobilien/bayern/muenchen',
+    'https://www.engelvoelkers.com/de/de/immobilien/res/kaufen/haus/bayern/muenchen',
+    'https://www.engelvoelkers.com/de/de/immobilien/res/kaufen/wohnung/bayern/muenchen',
+]
+WEICHSELGARTNER_URL = 'https://www.weichselgartner-immobilien.de/kaufen/haeuser/'
 BROKER_LABELS = {
     'bader': 'Bader',
     'schloss': 'Schloss',
@@ -25,6 +38,11 @@ BROKER_LABELS = {
     'firstplace': 'First Place',
     'bartsch': 'Bartsch',
     'schneider': 'Schneider',
+    'aigner': 'Aigner Immobilien',
+    'graf': 'Graf Immobilien',
+    'riedel': 'RIEDEL Immobilien',
+    'engel': 'Engel & Völkers Munich',
+    'weichselgartner': 'Weichselgartner Immobilien',
 }
 
 
@@ -111,6 +129,55 @@ def extract_title(block: str) -> str:
     if not candidates:
         return ''
     return max(candidates, key=len)
+
+
+def add_listing(listings, seen, title: str, price: str, area: str, location: str, link: str):
+    title = clean_text(title)
+    location = clean_text(location)
+    price = format_price(price)
+    area = clean_text(area)
+    item = {
+        'title': title,
+        'price': price,
+        'area_sqm': area,
+        'location': location,
+        'link': link,
+    }
+    key = (item['title'], item['price'], item['area_sqm'], item['location'], item['link'])
+    if not item['title'] or key in seen:
+        return
+    seen.add(key)
+    listings.append(item)
+
+
+def extract_page_title(html: str) -> str:
+    title_match = re.search(r'<meta property="og:title" content="([^"]+)"', html, re.S)
+    if title_match:
+        return clean_text(title_match.group(1))
+    h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.S)
+    if h1_match:
+        return clean_text(h1_match.group(1))
+    title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.S)
+    return clean_text(title_match.group(1)) if title_match else ''
+
+
+def extract_area_text(text: str) -> str:
+    area_match = re.search(r'([0-9][0-9.,]*)\s*m²', text, re.I)
+    if not area_match:
+        area_match = re.search(r'([0-9][0-9.,]*)\s*m\b', text, re.I)
+    return area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+
+
+def extract_location_text(text: str, fallback: str = '') -> str:
+    location_match = re.search(r'(?i)(?:Ort|Lage|Standort|Wohnort|in|gelegen in)\s*:?\s*([A-ZÄÖÜa-zäöüß0-9][^|<\n]+)', text)
+    if location_match:
+        location = clean_text(location_match.group(1))
+        location = re.split(r'[.;|]', location, maxsplit=1)[0]
+        location = re.sub(r'^(?:ca\.?\s*)?\d{4,5}\s+', '', location)
+        location = re.sub(r'\s+-\s+\d+$', '', location)
+        location = location.rstrip('.,;')
+        return location
+    return clean_text(fallback)
 
 
 def fetch_bader_listings():
@@ -370,6 +437,217 @@ def fetch_schneider_listings():
     return listings[:12]
 
 
+def fetch_aigner_listings():
+    listings = []
+    seen = set()
+
+    for page_url in AIGNER_URLS:
+        try:
+            req = urllib.request.Request(page_url, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+        except Exception:
+            continue
+
+        for block in re.findall(r'<article[^>]*>(.*?)</article>', html, re.S):
+            title = extract_title(block)
+            if not title:
+                title_match = re.search(r'<a[^>]*>(.*?)</a>', block, re.S)
+                title = clean_text(title_match.group(1)) if title_match else ''
+            if not is_valid_title(title):
+                continue
+
+            href_match = re.search(r'href="([^"]+)"', block, re.S)
+            href = urljoin(page_url, href_match.group(1)) if href_match else page_url
+            text_block = clean_text(block)
+            price_match = re.search(r'([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*€', text_block)
+            area = extract_area_text(text_block)
+            location = extract_location_text(text_block)
+            price = price_match.group(1) if price_match else 'Preis auf Anfrage'
+            add_listing(listings, seen, title, price, area, location, href)
+
+        if listings:
+            break
+
+    return listings[:12]
+
+
+def fetch_graf_listings():
+    listings = []
+    seen = set()
+
+    try:
+        req = urllib.request.Request(GRAF_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        overview_html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+    except Exception:
+        return listings
+
+    for match in re.finditer(r'<div class="col-12 col-md-6 col-lg-4 object-item">(.*?)</a></div>', overview_html, re.S):
+        block = match.group(1)
+        href_match = re.search(r'<a href="([^"]+)"', block, re.S)
+        if not href_match:
+            continue
+
+        page_url = urljoin(GRAF_URL, href_match.group(1))
+        try:
+            req = urllib.request.Request(page_url, headers={'User-Agent': 'Mozilla/5.0'})
+            detail_html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+        except Exception:
+            continue
+
+        title = extract_page_title(detail_html)
+        text = clean_text(detail_html)
+        card_text = clean_text(block)
+
+        price_match = re.search(r'(?:Kaufpreis|Kaltmiete|Miete|Preis)\s*:?\s*([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?|auf Anfrage)', text, re.I)
+        if price_match:
+            price = price_match.group(1)
+        else:
+            card_price_match = re.search(r'([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*€', card_text, re.I)
+            price = card_price_match.group(1) if card_price_match else 'Preis auf Anfrage'
+
+        area_match = re.search(r'Wohnfläche\s*:?\s*([0-9.,]+)\s*m', text, re.I)
+        if not area_match:
+            area_match = re.search(r'Wfl\.\s*:?\s*([0-9.,]+)\s*m', text, re.I)
+        if not area_match:
+            area_match = re.search(r'([0-9.,]+)\s*m²', card_text, re.I)
+        area = area_match.group(1) if area_match else ''
+
+        location_match = re.search(r'<div class="">[^<]*<br>\s*([^<]+)</div>', block, re.S)
+        location = clean_text(location_match.group(1)) if location_match else extract_location_text(text, 'München')
+        if ' in ' in title.lower() and location == 'München':
+            title_location = re.search(r'(?i)in\s+([A-ZÄÖÜa-zäöüß0-9][^,|]+)', title)
+            if title_location:
+                location = clean_text(title_location.group(1))
+
+        if not title:
+            continue
+
+        add_listing(listings, seen, title, price, area, location, page_url)
+
+    return listings[:12]
+
+
+def fetch_riedel_listings():
+    listings = []
+    seen = set()
+
+    try:
+        req = urllib.request.Request(RIEDEL_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+    except Exception:
+        return listings
+
+    for match in re.finditer(r'<li class="listEntry listEntryObject-[^"]*"[^>]*>(.*?)</li>', html, re.S):
+        block = match.group(1)
+        title_match = re.search(r'<h3 class="[^"]*">\s*<a href="([^"]+)"[^>]*>(.*?)</a>', block, re.S)
+        if not title_match:
+            continue
+
+        href = urljoin(RIEDEL_URL, title_match.group(1))
+        title = clean_text(title_match.group(2))
+        if not is_valid_title(title):
+            continue
+
+        block_text = clean_text(block)
+        if 'zzgl. nk' in block_text.lower() or 'nettokaltmiete' in block_text.lower():
+            continue
+
+        if re.search(r'Kaufpreis\s+auf\s+Anfrage', block_text, re.I):
+            price = 'Preis auf Anfrage'
+        else:
+            price_matches = re.findall(r'([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€', block_text)
+            price = price_matches[-1] if price_matches else 'Preis auf Anfrage'
+
+        area_match = re.search(r'Wfl\.\s*ca\.\s*([0-9.,]+)', block_text, re.I)
+        if not area_match:
+            area_match = re.search(r'Nfl\.\s*ca\.\s*([0-9.,]+)', block_text, re.I)
+        if not area_match:
+            area_match = re.search(r'Grd\.\s*([0-9.,]+)\s*m²', block_text, re.I)
+        area = area_match.group(1) if area_match else ''
+        location_match = re.search(r'<div class="listEntryLocationShort"[^>]*>(.*?)</div>', block, re.S)
+        location = clean_text(location_match.group(1)) if location_match else extract_location_text(block_text, 'München')
+
+        add_listing(listings, seen, title, price, area, location, href)
+
+    return listings[:12]
+
+
+def fetch_engel_listings():
+    listings = []
+    seen = set()
+
+    for page_url in ENGEL_URLS:
+        try:
+            req = urllib.request.Request(page_url, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+        except Exception:
+            continue
+
+        for block in re.findall(r'<article data-testid="search-components_result-card_[^"]+".*?</article>', html, re.S):
+            title_match = re.search(r'data-testid="search-components_result-card_headline">(.*?)</h2>', block, re.S)
+            location_match = re.search(r'data-testid="search-components_result-card_location">(.*?)</p>', block, re.S)
+            price_match = re.search(r'data-testid="search-components_result-card_price">(.*?)</p>', block, re.S)
+            area_match = re.search(r'data-testid="search-components_result-card_attribute_[^"]+-livingArea">(.*?)</span>', block, re.S)
+            href_match = re.search(r'href="([^"]+/exposes/[^"]+)"', block, re.S)
+
+            if not title_match or not href_match:
+                continue
+
+            title = clean_text(title_match.group(1))
+            if not is_valid_title(title):
+                continue
+
+            location = clean_text(location_match.group(1)) if location_match else ''
+            price = clean_text(price_match.group(1)) if price_match else 'Preis auf Anfrage'
+            if area_match:
+                area = extract_area_text(area_match.group(1))
+            else:
+                area = extract_area_text(clean_text(block))
+            href = urljoin(page_url, href_match.group(1))
+
+            add_listing(listings, seen, title, price, area, location, href)
+
+        if listings:
+            break
+
+    return listings[:12]
+
+
+def fetch_weichselgartner_listings():
+    listings = []
+    seen = set()
+
+    try:
+        req = urllib.request.Request(WEICHSELGARTNER_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+    except Exception:
+        return listings
+
+    for match in re.finditer(r'<div class="property-container" id="(\d+)">(.*?)<div class="clearfix"></div>', html, re.S):
+        block = match.group(2)
+        location_match = re.search(r'<div class="property-location">(.*?)</div>', block, re.S)
+        title_match = re.search(r'<h3 class="property-title">\s*<a href="([^"]+)"[^>]*>(.*?)</a>', block, re.S)
+        data_match = re.search(r'<div class="property-data-keyvalue">(.*?)</div>', block, re.S)
+        if not title_match or not data_match:
+            continue
+
+        href = urljoin(WEICHSELGARTNER_URL, title_match.group(1))
+        title = clean_text(title_match.group(2))
+        if not is_valid_title(title):
+            continue
+
+        data_text = clean_text(data_match.group(1))
+        price_match = re.search(r'Kaufpreis:\s*([^|<]+)', data_text, re.I)
+        area_match = re.search(r'Wohnfläche:\s*ca\.\s*([0-9.,]+)', data_text, re.I)
+        location = clean_text(location_match.group(1)) if location_match else 'München'
+        price = price_match.group(1) if price_match else 'Preis auf Anfrage'
+        area = area_match.group(1) if area_match else ''
+
+        add_listing(listings, seen, title, price, area, location, href)
+
+    return listings[:12]
+
+
 BROKER_SOURCES = [
     ('bader', fetch_bader_listings),
     ('schloss', fetch_schloss_listings),
@@ -377,6 +655,11 @@ BROKER_SOURCES = [
     ('firstplace', fetch_firstplace_listings),
     ('bartsch', fetch_bartsch_listings),
     ('schneider', fetch_schneider_listings),
+    ('aigner', fetch_aigner_listings),
+    ('graf', fetch_graf_listings),
+    ('riedel', fetch_riedel_listings),
+    ('engel', fetch_engel_listings),
+    ('weichselgartner', fetch_weichselgartner_listings),
 ]
 
 
