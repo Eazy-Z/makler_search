@@ -15,7 +15,7 @@ TARGET_URL = 'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm'
 LISTINGS_CACHE = None
 LISTINGS_CACHE_TIME = 0
 CACHE_TTL_SECONDS = 5 * 60
-LISTINGS_FETCH_TIMEOUT_SECONDS = 40
+LISTINGS_FETCH_TIMEOUT_SECONDS = 120
 SCHLOSS_URL = 'https://schlossberger-immobilien.de/immobilien-angebote/?inx-sort=availability_desc'
 ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
 FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
