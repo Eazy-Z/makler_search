@@ -13,6 +13,8 @@ Your job is to implement broker scrapers, UI improvements, and fixes in this rep
 - Use `detail-location-recovery` before accepting empty location.
 - Block invalid location artifacts (including navigation labels like `Zurück`).
 - Apply `no-false-location`: if no real place can be verified, use `N/A`.
+- Apply `field-provenance`: title, price, living area, location, and URL must come from the same listing record.
+- Extract living area only from an explicit `Wohnfläche` signal when other area types may exist; ambiguous means empty.
 
 ## Quick Delta
 - `geocoder-check`: verify place existence with a geocoder/locality check.
@@ -46,6 +48,9 @@ Your job is to implement broker scrapers, UI improvements, and fixes in this rep
 - Keep this 0-result source-specific retry as token-efficient as possible: targeted selectors/patterns, minimal probes, no broad exploratory loops.
 - Keep token usage low: avoid long explanations, avoid duplicate checks, avoid repeated tool loops.
 - For card-based extraction, avoid backward context scanning that can leak price/location from previous cards; prefer forward-only card chunks.
+- Bound card parsing structurally and stop at the current card/detail link or container end; fixed character windows must not cross into adjacent cards.
+- Never use the first or last arbitrary `m²` value as Wohnfläche. Grundstücksfläche, Nutzfläche, and Gewerbefläche are distinct fields.
+- Prefer an empty value over fabricated fallback data when source evidence is missing or ambiguous.
 
 ## Token-Efficient Rules
 - Read only files directly relevant to the request.
@@ -67,6 +72,9 @@ Your job is to implement broker scrapers, UI improvements, and fixes in this rep
 - For detail-page repair, use this order when location remains weak: explicit detail field -> postcode+city in detail text -> JSON-LD address locality/region -> conservative description-text location -> title/link fallback -> empty.
 - Normalize common broken city spellings (e.g., `Mnchen`/`Muenchen` -> `München`) before final location validation.
 - Keep helper behavior test-friendly: utilities should work with compact mocked responses used in targeted tests.
+- For every card-parser fix, add an adversarial fixture containing a previous/following card and, where relevant, Grundstücksfläche before Wohnfläche.
+- Add a negative fixture for missing Wohnfläche; Grundstücksfläche alone must produce empty living area.
+- Do not report `risk: none` until the adversarial test passes and the changed code has been compiled or otherwise executed.
 
 ## Shared Playbook
 - `weak-title-repair`: if title is generic/noisy, recover from detail page (`H1`/title).
@@ -76,6 +84,8 @@ Your job is to implement broker scrapers, UI improvements, and fixes in this rep
 - `zero-result-source-retry`: if first pass returns 0, run one targeted source-specific retry before finalizing.
 - `no-false-location`: if no reliable and verifiable location signal exists, set location to `N/A` (never force/placehold a guessed value).
 - `geocoder-check`: run place-existence validation as part of final location decision; unresolved stays `N/A`.
+- `field-provenance`: every emitted field must be traceable to the same card/detail record and correct semantic label.
+- `no-invention`: missing or ambiguous source data stays empty/`N/A`; do not infer `Preis auf Anfrage` or Wohnfläche.
 - Keep execution token-efficient: minimal probes, no exhaustive dumps, compact validation evidence.
 
 ## Approach
@@ -89,6 +99,8 @@ Your job is to implement broker scrapers, UI improvements, and fixes in this rep
 6.1. For SearchDetails sources, prioritize detail-page title/location repair over broad regex extraction from overview HTML.
 6.2. For title-derived locations, explicitly allow robust patterns like `City - ...`, `... Station City`, and `... - City am ...`.
 7. Run minimal validation (targeted test or one direct runtime check), including at least one 0-result broker case when relevant.
+7.1. For card parsers, validation must cover cross-card bleed, CTA/navigation rejection, competing area labels, and missing-field behavior.
+7.2. If `pytest` is unavailable and tests are free functions, execute focused tests with `runpy`; do not substitute `unittest discover` unless tests are `unittest.TestCase` based.
 8. Hand the result to the Test Agent only if explicit validation is requested or risk is non-trivial.
 
 ## Output Format

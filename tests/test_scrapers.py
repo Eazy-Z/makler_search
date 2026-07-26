@@ -90,6 +90,128 @@ def test_missing_brokers_are_registered():
         assert key in source_keys
 
 
+def test_zardini_uses_real_detail_links_and_local_card_context():
+    page = '''<div class="row objektliste">
+    <div class="listenobjekt"><span class="obj-title">10 Zimmer Mehrfamilien...</span>
+    <a href="/immobiliendetails.xhtml?id[obj0]=6181">Bild</a>
+    <div class="objectdata grundstueck"><span class="grid-33"><span>Grundstücksfläche</span><span>800 m²</span></span></div>
+    <div class="objectdata wohnen"><span class="grid-33"><span>Wohnfläche</span><span>282 m²</span></span></div>
+    <span class="obj-price">1.150.000 €</span><div class="obj-geo">Haus in 85238 Petershausen / Kollbach</div></div>
+    <div class="listenobjekt"><span class="obj-title">Folgekarte</span>
+    <a href="/immobiliendetails.xhtml?id[obj0]=7000">Bild</a>
+    <div class="objectdata grundstueck"><span class="grid-33"><span>Grundstücksfläche</span><span>999 m²</span></span></div>
+    <span class="obj-price">750.000 €</span><div class="obj-geo">Zurück</div></div></div>'''
+
+    def fake_fetch(url, timeout=20):
+        if 'id[obj0]=6181' in url:
+            return '<title>10 Zimmer Mehrfamilienhaus mit Entwicklungspotenzial Petershausen / Kollbach | Zardini Immobilien</title>'
+        if 'id[obj0]=7000' in url:
+            return '<title>Folgekarte - Zardini Immobilien</title>'
+        return page if 'haeuser.xhtml' in url else '<div class="row objektliste"></div>'
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_zardini_listings()
+
+    assert len(rows) == 2
+    assert rows[0]['title'] == '10 Zimmer Mehrfamilienhaus mit Entwicklungspotenzial Petershausen / Kollbach'
+    assert rows[0]['price'] == '1.150.000 €'
+    assert rows[0]['area_sqm'] == '282'
+    assert rows[0]['location'] == '85238 Petershausen / Kollbach'
+    assert rows[0]['link'].endswith('/immobiliendetails.xhtml?id[obj0]=6181')
+    assert rows[1]['title'] == 'Folgekarte'
+    assert rows[1]['area_sqm'] == ''
+    assert rows[1]['location'] == 'N/A'
+
+
+def test_fairhomes_parses_full_dmresprow_after_image_link():
+    page = '''<div class="dmRespRow"><p>Vorherige Karte 2.400.000 € 300 m² WFL</p></div>
+    <div class="dmRespRow hide-for-large hide-for-medium"><div class="dmRespCol"><a href="/projekt-2026-fwge"><img src="haus.jpg"></a></div>
+    <div class="dmRespCol"><div class="dmNewParagraph"><h2><span class="m-font-size-26">Mit tollem Schwimmteich und sonnigem Garten</span></h2></div>
+    <div class="dmNewParagraph hide-for-large"><p>882110 Germering-Unterpfaffenhofen</p>
+    <p>620 m² Grundstück</p><p>104,5 m² WFL</p><p>710.000,- €</p></div></div></div>
+    <div class="dmRespRow divider-row"><p>80331 München 80 m² WFL 980.000 €</p></div>
+    <div class="dmRespRow hide-for-large hide-for-medium"><div class="dmRespCol"></div><div class="dmRespCol">
+    <div class="dmNewParagraph"><h2><span class="m-font-size-26">Folgeprojekt</span></h2></div></div></div>'''
+
+    with patch.object(app, 'fetch_html', return_value=page):
+        rows = app.fetch_fairhomes_listings()
+
+    assert len(rows) == 1
+    assert rows[0]['title'] == 'Mit tollem Schwimmteich und sonnigem Garten'
+    assert rows[0]['price'] == '710.000 €'
+    assert rows[0]['area_sqm'] == '104.5'
+    assert rows[0]['location'] == '82110 Germering-Unterpfaffenhofen'
+    assert rows[0]['link'].endswith('/projekt-2026-fwge')
+
+
+def test_discovery_source_specific_card_parsers_reject_ctas_and_cross_card_values():
+    lebenstraum = '''<nav><a href="/suchende/">Suchende</a><a href="https://www.provenexpert.com/lebenstraum/">Bewertungen</a></nav>
+    <a href="/eigentuemer/">Eigentümer</a><p>895.000 € 180 m²</p>'''
+    joseffrei = '''<a href="/wp-content/uploads/haus.jpg">Suchen nach:</a>
+    <div class="et_pb_text et_pb_text_1"><p>Objekt-Nr. 6181</p><h2>Nießbrauch: Ruhiges Wohnen in München-Obermenzing</h2>
+    <p>Preis auf Anfrage</p><p>Grundstücksfläche 500 m²</p><p>Wohnfläche 135 m²</p></div>'''
+    ramonaneckar = '''<div class="w-dyn-item"><h3>Falsche Nachbarkarte</h3><p>895.000 € 180 m²</p></div>
+    <div class="w-dyn-item"><h3>Modernes Familienhaus in Karlsfeld</h3><p>85757 Karlsfeld</p><p>1.120.000 €</p>
+    <p>Grundstücksfläche 490 m²</p><p>Wohnfläche 166 m²</p>
+    <a href="/short-immobilienangebote/rni-123-karlsfeld">Details</a></div>'''
+    fairhomes = '''<div class="dmRespRow hide-for-large hide-for-medium"><div class="dmRespCol">
+    <a href="/projekt-2026-germering">Bild</a></div><div class="dmRespCol"><div class="dmNewParagraph">
+    <h2><span class="m-font-size-26">Mit tollem Schwimmteich und sonnigem Garten</span></h2></div>
+    <div class="dmNewParagraph hide-for-large"><p>82110 Germering-Unterpfaffenhofen</p>
+    <p>620 m² Grundstück</p><p>150 m² WFL</p><p>1.350.000 €</p></div></div></div>
+    <div class="dmRespRow divider-row"><p>80331 München 80 m² WFL 800.000 €</p></div>'''
+    stierling = '''<article><h3>Vorherige Wohnung</h3><p>Wohnfläche 80 m²</p><p>780.000 €</p>
+    <a href="https://www.immobilienscout24.de/expose/111111">Zum Exposé</a></article>
+    <article><h3>Großzügiges Einfamilienhaus</h3><p>Grundstücksfläche 650 m²</p>
+    <p>Wohnfläche 172 m²</p><p>1.290.000 €</p><a href="https://www.immobilienscout24.de/expose/123456">Zum Exposé</a></article>'''
+
+    def fake_fetch(url, timeout=20):
+        if 'lebenstraum' in url:
+            return lebenstraum
+        if 'josef-frei' in url and 'eigentumswohnungen' in url:
+            return '<div class="et_pb_text">Keine aktuellen Objekte</div>'
+        if 'josef-frei' in url:
+            return joseffrei
+        if 'ramonaneckar' in url:
+            return ramonaneckar
+        if 'fair-homes' in url:
+            return fairhomes
+        if 'stierling' in url:
+            return stierling
+        raise AssertionError(url)
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        assert app.fetch_lebenstraum_listings() == []
+        josef = app.fetch_joseffrei_listings()
+        ramona = app.fetch_ramonaneckar_listings()
+        fair = app.fetch_fairhomes_listings()
+        stierling_rows = app.fetch_stierling_listings()
+
+    assert len(josef) == 1 and josef[0]['title'].startswith('Nießbrauch')
+    assert josef[0]['price'] == 'Preis auf Anfrage' and josef[0]['area_sqm'] == '135'
+    assert josef[0]['location'] == 'München-Obermenzing'
+    assert len(ramona) == 1 and ramona[0]['price'] == '1.120.000 €'
+    assert ramona[0]['area_sqm'] == '166' and ramona[0]['location'] == '85757 Karlsfeld'
+    assert len(fair) == 1 and fair[0]['title'].startswith('Mit tollem Schwimmteich')
+    assert fair[0]['area_sqm'] == '150'
+    assert fair[0]['location'] == '82110 Germering-Unterpfaffenhofen'
+    assert len(stierling_rows) == 2 and stierling_rows[1]['title'] == 'Großzügiges Einfamilienhaus'
+    assert stierling_rows[1]['price'] == '1.290.000 €' and stierling_rows[1]['area_sqm'] == '172'
+    assert stierling_rows[1]['location'] == 'N/A'
+
+
+def test_ramona_neckar_does_not_treat_plot_area_as_living_area():
+    page = '''<div class="w-dyn-item"><h3>Baugrundstück in Karlsfeld</h3><p>85757 Karlsfeld</p>
+    <p>Grundstücksfläche 490 m²</p><p>895.000 €</p>
+    <a href="/short-immobilienangebote/rni-plot-karlsfeld">Details</a></div>'''
+
+    with patch.object(app, 'fetch_html', return_value=page):
+        rows = app.fetch_ramonaneckar_listings()
+
+    assert len(rows) == 1
+    assert rows[0]['area_sqm'] == ''
+
+
 def test_new_source_parsers_handle_source_specific_markup():
     graf_overview = '''<div class="col-12 col-md-6 col-lg-4 object-item"><a href="/expose/1250-2/charmante-wohnung-in-polzow/" class="card border-0 h-100 card-hover"><div class="my-3"><div class="fw-bold">Charmante Wohnung in Polzow</div><div class="">Etagenwohnung <br> Polzow</div><div class="mb-3 fs-7 fw-light mt-3">60,00&nbsp;m² – 390.000,00&nbsp;&euro;</div></div></a></div>'''
     graf_page = '''<!doctype html><html><head><meta property="og:title" content="Charmante Wohnung in Polzow" /></head><body><h3 class="el-title">Kaufpreis:</h3><div class="el-content uk-panel uk-h3">390.000€</div><h3 class="el-title">Wohnfläche:</h3><div class="el-content uk-panel uk-h3">60m²</div><p>Zur Vermietung steht eine Wohnung gelegen in 17309 Polzow.</p></body></html>'''

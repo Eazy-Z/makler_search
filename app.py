@@ -4803,9 +4803,189 @@ def fetch_rsi_listings():
 
 
 def fetch_joseffrei_listings():
-    rows = fetch_generic_broker_listings(JOSEF_FREI_HAEUSER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')
-    extras = fetch_generic_broker_listings(JOSEF_FREI_WOHNUNGEN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')
-    return merge_listing_rows(rows, extras)
+    listings = []
+    seen = set()
+    for page_url in (JOSEF_FREI_HAEUSER_URL, JOSEF_FREI_WOHNUNGEN_URL):
+        try:
+            html = fetch_html(page_url)
+        except Exception:
+            continue
+        openings = list(re.finditer(r'<div\b[^>]*class=["\'][^"\']*et_pb_text[^"\']*["\'][^>]*>', html, re.I))
+        for index, opening in enumerate(openings):
+            end = openings[index + 1].start() if index + 1 < len(openings) else min(len(html), opening.start() + 8000)
+            block = html[opening.start():end]
+            text = clean_text(block)
+            object_match = re.search(r'Objekt(?:-|\s)?(?:Nr\.?\s*)?(\d{3,})', text, re.I)
+            if not object_match:
+                continue
+            headings = [clean_text(value) for value in re.findall(r'<h[1-4][^>]*>(.*?)</h[1-4]>', block, re.I | re.S)]
+            title = next((value for value in headings if is_valid_title(value) and not re.search(r'^(?:Objekt|Suchen nach)', value, re.I)), '')
+            if not title:
+                title_match = re.search(r'Objekt(?:-|\s)?(?:Nr\.?\s*)?\d{3,}\s+(.+?)(?=\s+(?:Kaufpreis|Preis|Wohnfl|\d+[.,]?\d*\s*m²))', text, re.I)
+                title = clean_text(title_match.group(1)) if title_match else ''
+            price_match = re.search(r'(Preis auf Anfrage|Kaufpreis\s*:?[ ]*([0-9][0-9.]*\s*(?:,\d{2})?\s*€))', text, re.I)
+            area_match = re.search(r'(?<![A-Za-zÄÖÜäöüß])Wohnfläche\s*:?\s*(?:ca\.\s*)?([0-9][0-9.,]*)\s*m²', text, re.I)
+            if not title or not price_match:
+                continue
+            price = price_match.group(2) or price_match.group(1)
+            area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+            location_match = re.search(r'\b(München[- /][A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)', title)
+            location = location_match.group(1) if location_match else UNKNOWN_LOCATION
+            add_listing(listings, seen, title, price, area, location, f'{page_url}#objekt-{object_match.group(1)}')
+    return listings[:12]
+
+
+def fetch_lebenstraum_listings():
+    try:
+        html = fetch_html(LEBENSTRAUM_URL)
+    except Exception:
+        return []
+    listings = []
+    seen = set()
+    detail_re = re.compile(r'/(?:immobilie|objekt|expose)/[^/?#]+/?$', re.I)
+    detail_anchors = [
+        anchor for anchor in re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.I | re.S)
+        if detail_re.search(urlparse(urljoin(LEBENSTRAUM_URL, clean_text(anchor.group(1)))).path)
+    ]
+    for index, anchor in enumerate(detail_anchors):
+        href = urljoin(LEBENSTRAUM_URL, clean_text(anchor.group(1)))
+        fallback_start = detail_anchors[index - 1].end() if index else 0
+        prefix = html[max(fallback_start, anchor.start() - 5000):anchor.start()]
+        openings = list(re.finditer(
+            r'<(?:article|li|section)\b[^>]*>|<div\b[^>]*class=["\'][^"\']*(?:card|immobil|objekt|angebot|property)[^"\']*["\'][^>]*>',
+            prefix,
+            re.I,
+        ))
+        start = anchor.start() - len(prefix) + openings[-1].start() if openings else fallback_start
+        block = html[start:anchor.end()]
+        text = clean_text(block)
+        headings = [clean_text(value) for value in re.findall(r'<h[1-4][^>]*>(.*?)</h[1-4]>', block, re.I | re.S)]
+        title = next((value for value in reversed(headings) if is_valid_title(value)), '')
+        price_match = re.search(r'(Preis auf Anfrage|[0-9][0-9.]*\s*(?:,\d{2})?\s*€)', text, re.I)
+        area_match = re.search(r'(?<![A-Za-zÄÖÜäöüß])Wohnfläche\s*:?\s*(?:ca\.\s*)?([0-9][0-9.,]*)\s*m²', text, re.I)
+        location_match = re.search(r'\b(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/]+)', text)
+        if title and price_match:
+            area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+            add_listing(listings, seen, title, price_match.group(1), area, location_match.group(1) if location_match else UNKNOWN_LOCATION, href)
+    return listings[:12]
+
+
+def fetch_ramonaneckar_listings():
+    try:
+        html = fetch_html(RAMONANECKAR_URL)
+    except Exception:
+        return []
+    listings = []
+    seen = set()
+    cards = list(re.finditer(r'<(?:div|article|li)\b[^>]*class=["\'][^"\']*w-dyn-item[^"\']*["\'][^>]*>', html, re.I))
+    for index, card in enumerate(cards):
+        end = cards[index + 1].start() if index + 1 < len(cards) else min(len(html), card.start() + 10000)
+        block = html[card.start():end]
+        link_match = re.search(r'<a\b[^>]*href=["\']([^"\']*/short-immobilienangebote/rni-[^"\']+)["\']', block, re.I)
+        if not link_match:
+            continue
+        text = clean_text(block)
+        headings = [clean_text(value) for value in re.findall(r'<h[1-4][^>]*>(.*?)</h[1-4]>', block, re.I | re.S)]
+        title = next((value for value in headings if is_valid_title(value)), '')
+        price_match = re.search(r'(Preis auf Anfrage|[0-9][0-9.]*\s*(?:,\d{2})?\s*€)', text, re.I)
+        area_match = re.search(r'(?<![A-Za-zÄÖÜäöüß])Wohnfläche\s*:?\s*(?:ca\.\s*)?([0-9][0-9.,]*)\s*m²', text, re.I)
+        location_match = re.search(r'\b(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/]+)', text)
+        if title and price_match:
+            area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+            add_listing(listings, seen, title, price_match.group(1), area, location_match.group(1) if location_match else UNKNOWN_LOCATION, urljoin(RAMONANECKAR_URL, link_match.group(1)))
+    return listings[:12]
+
+
+def fetch_fairhomes_listings():
+    try:
+        html = fetch_html(FAIR_HOMES_URL)
+    except Exception:
+        return []
+    listings = []
+    seen = set()
+    cards = list(re.finditer(
+        r'<div\b[^>]*class=["\'](?=[^"\']*\bdmRespRow\b)(?=[^"\']*\bhide-for-large\b)(?=[^"\']*\bhide-for-medium\b)[^"\']*["\'][^>]*>',
+        html,
+        re.I,
+    ))
+    for index, card in enumerate(cards):
+        following_row = re.search(r'<div\b[^>]*class=["\'][^"\']*\bdmRespRow\b[^"\']*["\'][^>]*>', html[card.end():], re.I)
+        end = card.end() + following_row.start() if following_row else len(html)
+        block = html[card.start():end]
+        if len(re.findall(r'<div\b[^>]*class=["\'][^"\']*\bdmRespCol\b[^"\']*["\']', block, re.I)) != 2:
+            continue
+        anchor = re.search(r'<a\b[^>]*href=["\'](/projekt-20[^"\']*)["\']', block, re.I)
+        if not anchor:
+            continue
+        title_match = re.search(
+            r'<div\b[^>]*class=["\'][^"\']*\bdmNewParagraph\b[^"\']*["\'][^>]*>.*?<h2\b[^>]*>\s*<span\b[^>]*class=["\'][^"\']*\bm-font-size-26\b[^"\']*["\'][^>]*>(.*?)</span>',
+            block,
+            re.I | re.S,
+        )
+        title = clean_text(title_match.group(1)) if title_match else ''
+        data_start = re.search(
+            r'<div\b[^>]*class=["\'](?=[^"\']*\bdmNewParagraph\b)(?=[^"\']*\bhide-for-large\b)[^"\']*["\'][^>]*>',
+            block,
+            re.I,
+        )
+        data_text = clean_text(block[data_start.start():]) if data_start else ''
+        price_match = re.search(r'(Preis auf Anfrage|[0-9][0-9.]*\s*(?:,\d{2}|,-)?\s*€)', data_text, re.I)
+        area_match = re.search(r'([0-9][0-9.,]*)\s*m²\s*WFL\b', data_text, re.I)
+        location_match = re.search(r'(?<!\d)(?:\d)?(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/]+){0,2})', data_text)
+        if title and price_match:
+            area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+            add_listing(listings, seen, title, price_match.group(1), area, location_match.group(1) if location_match else UNKNOWN_LOCATION, urljoin(FAIR_HOMES_URL, anchor.group(1)))
+    return listings[:13]
+
+
+def fetch_stierling_listings():
+    try:
+        html = fetch_html(STIERLING_URL)
+    except Exception:
+        return []
+    listings = []
+    seen = set()
+    links = list(re.finditer(r'<a\b[^>]*href=["\'](https?://[^"\']*immobilienscout24\.de/expose/[^"\']+)["\'][^>]*>.*?</a>', html, re.I | re.S))
+    links.extend(re.finditer(r'goToExpose\s*\(\s*["\'](https?://[^"\']*immobilienscout24\.de/expose/[^"\']+)["\']\s*\)', html, re.I))
+    links = sorted(links, key=lambda value: value.start())
+    for index, link_match in enumerate(links):
+        href = clean_text(link_match.group(1))
+        fallback_start = links[index - 1].end() if index else 0
+        prefix = html[max(fallback_start, link_match.start() - 5000):link_match.start()]
+        card_openings = list(re.finditer(
+            r'<(?:article|li|section)\b[^>]*>|<div\b[^>]*class=["\'][^"\']*(?:card|immobil|objekt|angebot|property)[^"\']*["\'][^>]*>',
+            prefix,
+            re.I,
+        ))
+        start = link_match.start() - len(prefix) + card_openings[-1].start() if card_openings else fallback_start
+        block = html[start:link_match.end()]
+        text = clean_text(block)
+        headings = [clean_text(value) for value in re.findall(r'<h[1-4][^>]*>(.*?)</h[1-4]>', block, re.I | re.S)]
+        title = next((value for value in reversed(headings) if is_valid_title(value) and not re.search(r'^(?:Suche|Zum Exposé)', value, re.I)), '')
+        price_matches = list(re.finditer(r'(Preis auf Anfrage|[0-9][0-9.]*\s*(?:,\d{2})?\s*€)', text, re.I))
+        price_match = price_matches[-1] if price_matches else None
+        area_match = re.search(r'(?<![A-Za-zÄÖÜäöüß])Wohnfläche\s*:?[\s\S]{0,30}?([0-9][0-9.,]*)\s*m²', text, re.I)
+        location_match = re.search(r'\b(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/]+)', text)
+        if not title or not price_match or not area_match or not location_match:
+            try:
+                detail_html = fetch_html(href)
+            except Exception:
+                detail_html = ''
+            detail_text = clean_text(detail_html)
+            if not title:
+                detail_heading = re.search(r'<h1[^>]*>(.*?)</h1>', detail_html, re.I | re.S)
+                title = clean_text(detail_heading.group(1)) if detail_heading else ''
+            if not price_match:
+                price_match = re.search(r'(Preis auf Anfrage|[0-9][0-9.]*\s*(?:,\d{2})?\s*€)', detail_text, re.I)
+            if not area_match:
+                area_match = re.search(r'(?<![A-Za-zÄÖÜäöüß])Wohnfläche\s*:?[\s\S]{0,30}?([0-9][0-9.,]*)\s*m²', detail_text, re.I)
+            if not location_match:
+                location_match = re.search(r'\b(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/]+)', detail_text)
+        if title and price_match:
+            area_value = next((value for value in area_match.groups() if value), '') if area_match else ''
+            area = area_value.replace('.', '').replace(',', '.')
+            add_listing(listings, seen, title, price_match.group(1), area, location_match.group(1) if location_match else UNKNOWN_LOCATION, href)
+    return listings[:12]
 
 
 def fetch_aufrecht_listings():
@@ -4815,17 +4995,51 @@ def fetch_aufrecht_listings():
 
 
 def fetch_zardini_listings():
-    rows = fetch_source_specific_broker_listings(
-        ZARDINI_HAEUSER_URL,
-        r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
-        r'(haeuser|wohnungen|cmd=expose|objekt|immobilie)',
-    )
-    extras = fetch_source_specific_broker_listings(
-        ZARDINI_WOHNUNGEN_URL,
-        r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
-        r'(haeuser|wohnungen|cmd=expose|objekt|immobilie)',
-    )
-    return merge_listing_rows(rows, extras)
+    listings = []
+    seen = set()
+    for page_url in (ZARDINI_HAEUSER_URL, ZARDINI_WOHNUNGEN_URL):
+        try:
+            html = fetch_html(page_url)
+        except Exception:
+            continue
+        list_row = re.search(r'<div\b[^>]*class=["\'](?=[^"\']*\brow\b)(?=[^"\']*\bobjektliste\b)[^"\']*["\'][^>]*>', html, re.I)
+        if not list_row:
+            continue
+        cards = list(re.finditer(r'<div\b[^>]*class=["\'][^"\']*\blistenobjekt\b[^"\']*["\'][^>]*>', html[list_row.end():], re.I))
+        for index, card in enumerate(cards):
+            end = cards[index + 1].start() if index + 1 < len(cards) else len(html)
+            block = html[list_row.end() + card.start():list_row.end() + end]
+            anchor = re.search(
+                r'<a\b[^>]*href=["\']([^"\']*immobiliendetails\.xhtml\?id\[obj0\]=[^"\']+)["\']',
+                block,
+                re.I,
+            )
+            if not anchor:
+                continue
+            href = urljoin(page_url, anchor.group(1))
+            price_field = re.search(r'<span\b[^>]*class=["\'][^"\']*\bobj-price\b[^"\']*["\'][^>]*>(.*?)</span>', block, re.I | re.S)
+            price_match = re.search(r'(Preis auf Anfrage|[0-9][0-9.]*\s*(?:,\d{2})?\s*€)', clean_text(price_field.group(1)), re.I) if price_field else None
+            living_area_field = re.search(
+                r'<div\b[^>]*class=["\'](?=[^"\']*\bobjectdata\b)(?=[^"\']*\bwohnen\b)[^"\']*["\'][^>]*>(.*?)</div>',
+                block,
+                re.I | re.S,
+            )
+            first_area_column = re.search(r'<span\b[^>]*class=["\'][^"\']*\bgrid-33\b[^"\']*["\'][^>]*>(.*?)</span>\s*</span>', living_area_field.group(1), re.I | re.S) if living_area_field else None
+            area_match = re.search(r'([0-9][0-9.,]*)\s*m²', clean_text(first_area_column.group(1)), re.I) if first_area_column else None
+            geo_field = re.search(r'<[^>]*class=["\'][^"\']*\bobj-geo\b[^"\']*["\'][^>]*>(.*?)</[^>]+>', block, re.I | re.S)
+            location_match = re.search(r'\bin\s+(\d{5}\s+.+)', clean_text(geo_field.group(1)), re.I) if geo_field else None
+            try:
+                detail_html = fetch_html(href)
+            except Exception:
+                detail_html = ''
+            title = extract_page_title(detail_html)
+            title = re.sub(r'\s*(?:\||–|-)\s*Zardini(?:\s+Immobilien)?\b.*$', '', title, flags=re.I).strip(' -|')
+            if not title or not price_match:
+                continue
+            location = clean_text(location_match.group(1)) if location_match else UNKNOWN_LOCATION
+            area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+            add_listing(listings, seen, title, price_match.group(1), area, location, href)
+    return listings[:12]
 
 
 BROKER_SOURCES = [
@@ -4937,7 +5151,7 @@ BROKER_SOURCES = [
     ('emslander', lambda: fetch_source_specific_broker_listings(EMSLANDER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilie|objekt|expose|angebot|kauf)')),
     ('hoser', lambda: fetch_external_broker_listings(HOSER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')),
     ('feuerlein', lambda: fetch_source_specific_broker_listings(FEUERLEIN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilienangebot|cmd=expose|objekt|immobilie)')),
-    ('lebenstraum', lambda: fetch_source_specific_broker_listings(LEBENSTRAUM_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|kaufen|cmd=expose|objekt)')),
+    ('lebenstraum', fetch_lebenstraum_listings),
     ('gschwender', lambda: fetch_source_specific_broker_listings(GSCHWENDER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(angebote|cmd=expose|objekt|immobilie)')),
     ('maurer', lambda: fetch_source_specific_broker_listings(MAURER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(Angebote|cmd=expose|objekt|immobilie)')),
     ('pscheidt', fetch_pscheidt_listings),
@@ -4945,9 +5159,9 @@ BROKER_SOURCES = [
     ('isarestate', lambda: fetch_source_specific_broker_listings(ISARESTATE_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(angebot|cmd=expose|objekt|immobilie)')),
     ('wesoly', lambda: fetch_source_specific_broker_listings(WESOLY_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(angebote|kauf|cmd=expose|objekt|immobilie)')),
     ('westend', lambda: fetch_source_specific_broker_listings(IMMOBILIENWESTEND_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(Haeuser-zum-Kauf|cmd=expose|objekt|immobilie)')),
-    ('stierling', lambda: fetch_source_specific_broker_listings(STIERLING_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(zum-kauf|cmd=expose|objekt|immobilie)')),
+    ('stierling', fetch_stierling_listings),
     ('finestep', lambda: fetch_generic_broker_listings(FINESTEP_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')),
-    ('fairhomes', lambda: fetch_source_specific_broker_listings(FAIR_HOMES_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien-kauf|cmd=expose|objekt|immobilie)')),
+    ('fairhomes', fetch_fairhomes_listings),
     ('chalet', lambda: fetch_source_specific_broker_listings(CHALET_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(Angebote|cmd=expose|objekt|immobilie)')),
     ('kraftziller', lambda: fetch_source_specific_broker_listings(KRAFT_ZILLER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(Haeuser-zum-Kauf|cmd=expose|objekt|immobilie)')),
     ('wolf', fetch_wolf_listings),
@@ -4959,7 +5173,7 @@ BROKER_SOURCES = [
     ('luenendonk', lambda: fetch_source_specific_broker_listings(LUENENDONK_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(Objekte|cmd=expose|objekt|immobilie)')),
     ('harinali', lambda: fetch_source_specific_broker_listings(HARINALI_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilienangebote|cmd=expose|objekt|immobilie)')),
     ('aufrecht', fetch_aufrecht_listings),
-    ('ramonaneckar', lambda: fetch_source_specific_broker_listings(RAMONANECKAR_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(angebote|cmd=expose|objekt|immobilie)')),
+    ('ramonaneckar', fetch_ramonaneckar_listings),
     ('mytropper', lambda: fetch_source_specific_broker_listings(MYTROPPER_URL, r'(cmd=searchDetails|cmd=expose|immobilie|objekt|angebot|kauf|haus|wohnung)', r'(cmd=searchDetails|cmd=expose|obj-)')),
     ('sriimmo', lambda: fetch_source_specific_broker_listings(SRI_IMMO_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(kaufen|mieten|cmd=expose|objekt|immobilie)')),
     ('zg', lambda: fetch_external_broker_listings(ZG_IMMOBILIEN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')),
@@ -5034,17 +5248,19 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'seimmobilien': lambda: fetch_zero_broker_detail_crawl(SE_IMMOBILIEN_HAEUSER_URL),
     'wandl': lambda: fetch_zero_broker_detail_crawl(WANDL_URL),
     'hoser': fetch_hoser_listings_retry_alt,
-    'lebenstraum': fetch_lebenstraum_listings_retry_alt,
+    'lebenstraum': fetch_lebenstraum_listings,
     'maurer': lambda: fetch_zero_broker_detail_crawl(MAURER_URL),
     'bechler': fetch_bechler_listings_retry_alt,
     'wesoly': fetch_wesoly_listings_retry_alt,
-    'fairhomes': lambda: fetch_zero_broker_detail_crawl(FAIR_HOMES_URL),
+    'stierling': fetch_stierling_listings,
+    'fairhomes': fetch_fairhomes_listings,
     'chalet': lambda: fetch_zero_broker_detail_crawl(CHALET_URL),
     'kraftziller': lambda: fetch_zero_broker_detail_crawl(KRAFT_ZILLER_URL),
     'wolf': lambda: fetch_zero_broker_detail_crawl(WOLF_HAUS_URL),
-    'joseffrei': lambda: fetch_source_specific_with_embedded_retry(JOSEF_FREI_HAEUSER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(objekte|haeuser|wohnungen|angebote|objekt|immobilie|detail|expose|kauf)'),
+    'joseffrei': fetch_joseffrei_listings,
     'luenendonk': lambda: fetch_zero_broker_detail_crawl(LUENENDONK_URL),
     'harinali': lambda: fetch_zero_broker_detail_crawl(HARINALI_URL),
+    'ramonaneckar': fetch_ramonaneckar_listings,
     'sriimmo': fetch_sriimmo_listings_retry_alt,
     'reischl': fetch_reischl_listings_retry_alt,
     'gattinger': fetch_gattinger_listings_retry_alt,

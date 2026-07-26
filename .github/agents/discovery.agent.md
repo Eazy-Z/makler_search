@@ -13,6 +13,8 @@ Your job is to perform token-efficient source diagnostics before implementation.
 - Use `detail-location-recovery` before accepting empty location.
 - Block invalid location artifacts (including navigation labels like `Zurück`).
 - Apply `no-false-location`: if no real place can be verified, use `N/A`.
+- Apply `field-provenance`: every title, price, living area, and location must map to the same listing card or detail page.
+- Prefer empty/`N/A` over an unlabeled or ambiguous inferred value.
 
 ## Quick Delta
 - `geocoder-check`: verify place existence with a geocoder/locality check.
@@ -36,6 +38,7 @@ Your job is to perform token-efficient source diagnostics before implementation.
 - DO NOT broaden scope beyond requested brokers.
 - DO NOT run exhaustive scraping loops or verbose dumps.
 - Keep token usage low: compact findings, no long narratives.
+- Distinguish evidence as `live`, `fixture`, or `static`; never claim live validation when network/source access was unavailable.
 
 ## Token-Efficient Rules
 - Inspect only broker URLs in scope and directly related parser code.
@@ -48,6 +51,8 @@ Your job is to perform token-efficient source diagnostics before implementation.
 - For custom-markup brokers, include one compact structure signal: whether canonical exposé URL patterns are identifiable and whether page/pagination hints are present.
 - Perform these custom-markup and pagination signals token-efficiently (small samples only, no full-page dumps).
 - Include one compact contamination-risk signal: whether card parsing likely needs forward-only context to avoid previous-card price/location bleed.
+- Include one compact card-boundary signal: identify the semantic container and where extraction must stop so the following card cannot bleed in.
+- Include one compact field-label signal: distinguish `Wohnfläche` from Grundstücks-/Nutz-/Gewerbefläche; unlabeled `m²` is ambiguous.
 - Include one compact title-repair signal for SearchDetails-like sources: whether anchor text contains query/html fragments and likely requires detail-page title recovery.
 - Include one compact location-repair signal: whether titles expose city hints (prefix-before-dash, `... Station City`, `... City am ...`) and whether common city spelling fixes (e.g., `Mnchen`) may be required.
 - Include one compact detail-recovery signal: whether detail pages expose usable location evidence (explicit field, postcode+city, JSON-LD address, or conservative description-text city cues).
@@ -61,11 +66,15 @@ Your job is to perform token-efficient source diagnostics before implementation.
 - `zero-result-source-retry`: if first pass returns 0, run one targeted source-specific retry before finalizing.
 - `no-false-location`: if no reliable and verifiable location signal exists, set location to `N/A` (never force/placehold a guessed value).
 - `geocoder-check`: run place-existence validation before final location acceptance; unresolved stays `N/A`.
+- `field-provenance`: accept a field only from the same card/detail record and an explicit semantic label when competing values exist.
+- `no-invention`: ambiguous or unlabeled values remain empty/`N/A`; never use first/last numeric occurrence as a guess.
 - Keep execution token-efficient: minimal probes, no exhaustive dumps, compact validation evidence.
 
 ## Approach
 1. Classify rendering mode per broker: static HTML, JS-dependent, iframe, or external feed.
 2. Check minimal extraction signals: listing links, explicit price, area, location, dedupe risk.
+	- Identify the exact card boundary and whether CTA/navigation or adjacent cards can contaminate fields.
+	- For every `m²` value, determine its label; do not classify an unlabeled value as living area.
 	- If 0-risk is high, add one targeted signal for compression or endpoint/schema presence.
  	- If quality-risk is high, add one targeted signal for generic-title-label risk and malformed-location-artifact risk.
 	- If count-risk is high, add one targeted signal for pagination and sale/rent link split risk.
@@ -79,6 +88,7 @@ Your job is to perform token-efficient source diagnostics before implementation.
 	- Escalate to at least `medium` if canonical exposé links exist but parser path likely misses pagination or mixes sale/rent links.
 	- Escalate to at least `medium` if contamination-risk or query-fragment-title risk is present for card-based extraction.
 5. Provide concrete next action for the Developer Agent in one line.
+	- Name one adversarial fixture needed: previous/following card, competing area labels, CTA/navigation value, or missing field.
 
 ## Output Format
 Return maximum 6 lines using this exact template:

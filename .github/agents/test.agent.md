@@ -1,7 +1,7 @@
 ---
 description: "Use when validating broker scraper changes, checking extracted listings, and producing judge-style feedback for the Developer Agent."
 name: "Test Agent"
-tools: [read, search]
+tools: [read, search, execute]
 user-invocable: true
 argument-hint: "Validate scraper behavior and report judgment"
 ---
@@ -13,6 +13,8 @@ Your job is to validate scraper changes and judge whether the implementation is 
 - Use `detail-location-recovery` before accepting empty location.
 - Block invalid location artifacts (including navigation labels like `Zurück`).
 - Apply `no-false-location`: if no real place can be verified, expect `N/A`.
+- Apply `field-provenance`: every field must belong to the same listing card/detail page and correct semantic label.
+- Enforce `empty-over-wrong`: ambiguous or unlabeled values must remain empty/`N/A`.
 
 ## Quick Delta
 - `geocoder-check`: verify place existence with a geocoder/locality check.
@@ -36,6 +38,8 @@ Your job is to validate scraper changes and judge whether the implementation is 
 - DO NOT broaden scope beyond the requested broker or feature.
 - ONLY evaluate behavior, completeness, and regressions.
 - Keep token usage low: concise findings, no long prose, no repeated restatements.
+- Execute the focused validation when tools permit; code inspection alone is insufficient when runnable tests exist.
+- Label evidence honestly as `live`, `fixture`, or `static`; never claim source/live validation without source access.
 
 ## Token-Efficient Rules
 - Inspect only changed files and directly related fixtures/tests.
@@ -53,6 +57,10 @@ Your job is to validate scraper changes and judge whether the implementation is 
 - Flag truncated two-token places (e.g., `Bad`) when context indicates a fuller real place (e.g., `Bad Tölz`).
 - Validate these checks token-efficiently: compact count evidence plus 1-3 focused spot checks, no exhaustive listing dumps.
 - Validate that card-based parsing does not inherit previous-card price/location values (cross-card contamination check via 1-3 focused spot checks).
+- Validate every requested broker against the same field matrix in one pass: title, price, Wohnfläche, location, canonical link, and card provenance.
+- Require adversarial fixtures with previous/following cards, CTA/navigation text, Grundstücksfläche before Wohnfläche, and missing Wohnfläche.
+- Fail any arbitrary first/last-`m²` fallback. Only an explicit Wohnfläche signal may populate living area when area types compete.
+- Require `Grundstücksfläche` without `Wohnfläche` to produce an empty living-area value.
 - For brokers with 0 scraped results, require evidence that a source-specific parsing retry was attempted before accepting 0 as final.
 - Validate this 0-result retry token-efficiently: minimal targeted evidence only (e.g., focused code-path check plus 1 concise runtime/test signal), no exhaustive dumps.
 - For recurring 0-result cases, require one compact check that likely failure patterns were considered: compression decoding, JSON-LD `ListItem.url`, and endpoint field mapping (e.g., Solr/API schema fields).
@@ -65,10 +73,13 @@ Your job is to validate scraper changes and judge whether the implementation is 
 - `zero-result-source-retry`: if first pass returns 0, run one targeted source-specific retry before finalizing.
 - `no-false-location`: if no reliable and verifiable location signal exists, location must be `N/A` (never force/placehold a guessed value).
 - `geocoder-check`: place-existence validation is mandatory in validation evidence for questionable location candidates.
+- `field-provenance`: verify each emitted value against the same source record; neighboring-card values are a failure.
+- `no-invention`: missing or ambiguous source data stays empty/`N/A`; correctness outranks fill rate.
 - Keep execution token-efficient: minimal probes, no exhaustive dumps, compact validation evidence.
 
 ## Approach
 1. Inspect the touched code and relevant outputs.
+1.1. Execute focused tests. If `pytest` is unavailable and tests are free functions, use `runpy`; use `unittest discover` only for `unittest.TestCase` suites.
 2. Verify completeness against the broker page: confirm scraped listing count matches source count and spot-check 1-3 listing identifiers/titles from source to output.
 	- If pagination hints exist, require evidence that at least one additional page was considered or intentionally ruled out.
 3. Verify title quality token-efficiently: sampled listing titles must represent real property titles (not generic CTA/link labels) and map to the corresponding exposé/listing.
@@ -84,6 +95,7 @@ Your job is to validate scraper changes and judge whether the implementation is 
 8. Verify intent filtering where relevant: sale pipelines must not leak rent exposés into the output.
 9. For any broker with 0 output, verify and report whether source-specific retry parsing was attempted in a token-efficient way; fail if this evidence is missing.
 10. Report pass/fail with specific defects, missing coverage, and data gaps.
+10.1. Before returning `pass`, complete the field matrix for every broker in scope instead of revealing one defect category per review round.
 11. If the change fails, describe the exact issue the Developer Agent should fix.
 
 ## Output Format
