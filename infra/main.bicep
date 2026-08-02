@@ -28,6 +28,9 @@ param webAppName string = 'maklerapp-v2'
 @description('Linux Consumption Function App name.')
 param functionAppName string = 'maklerapp-v2-timer'
 
+@description('Object ID of the GitHub Actions service principal. Override when the repository uses a different deployment identity.')
+param githubActionsPrincipalId string = '78e19b89-c199-4a0e-a127-5fa2a85f84b7'
+
 @description('Backend URL called by the timer function after deployment.')
 param backendRefreshUrl string = 'https://maklerapp-v2.azurewebsites.net/internal/refresh'
 
@@ -67,6 +70,7 @@ module platform './resources.bicep' = {
     functionStorageAccountName: functionStorageAccountName
     webAppName: webAppName
     functionAppName: functionAppName
+    githubActionsPrincipalId: githubActionsPrincipalId
     backendRefreshUrl: backendRefreshUrl
     emailSmtpHost: emailSmtpHost
     emailSmtpPort: emailSmtpPort
