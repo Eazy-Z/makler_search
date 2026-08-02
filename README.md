@@ -20,6 +20,8 @@ Open the app at:
 http://127.0.0.1:8000/
 ```
 
+On Azure App Service, open `https://maklerapp.azurewebsites.net/`.
+
 ## Notes
 
 - The project uses only the Python standard library.

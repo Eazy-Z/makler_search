@@ -6,6 +6,7 @@ import gzip
 import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import urllib.request
+import os
 from html import unescape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote, urljoin, urlparse
@@ -5545,6 +5546,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    server = HTTPServer(('127.0.0.1', 8000), Handler)
-    print('Server running on http://127.0.0.1:8000')
+    host = '0.0.0.0'
+    port = int(os.environ.get('PORT', '8000'))
+    server = HTTPServer((host, port), Handler)
+    print(f'Server running on http://{host}:{port}')
     server.serve_forever()
