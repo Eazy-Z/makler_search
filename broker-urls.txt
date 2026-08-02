@@ -99,7 +99,7 @@ H�user zum Kauf | Sopart Immobilien GmbH
 https://team-bim.de/#imag_immobiliensuche
 https://www.sozius-immobilien.de/immobilien/wohnen/
 https://www.andreas-schmid-immobilien.de/alle-immobilien/
-http://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html
+https://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html
 https://www.akurat.net/immobilienangebote/
 https://www.ausdemhaeuschen.com/angebot
 https://www.sopart-immobilien.de/index.php4?cmd=searchResults&goto=1&alias=suchmaske&aktwaehrung=%80&kaufartids=&kategorieids=200&ortnamegenau=&flaecheKatAbhaengigMin=32.00&flaecheKatAbhaengigMax=481.00&preisMin=0.00&preisMax=1790000.00&zimmerMin=0.00&zimmerMax=7.00&objq%5Border_zusammen%5D=&objqorder_zusammen=#sprung_modul_suchmakse_0

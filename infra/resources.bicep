@@ -135,14 +135,6 @@ resource smtpPasswordValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (
   }
 }
 
-resource functionStorageConnectionValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  name: 'function-storage-connection'
-  parent: keyVault
-  properties: {
-    value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccount.name};AccountKey=${listKeys(functionStorageAccount.id, functionStorageAccount.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
-  }
-}
-
 resource webPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: '${webAppName}-plan'
   location: location
@@ -282,8 +274,16 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: '3.12'
         }
         {
-          name: 'AzureWebJobsStorage'
-          value: '${keyVaultReference}${functionStorageConnectionValue.properties.secretUriWithVersion})'
+          name: 'AzureWebJobsStorage__accountName'
+          value: functionStorageAccount.name
+        }
+        {
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
+        }
+        {
+          name: 'AzureWebJobsStorage__clientId'
+          value: 'systemAssignedIdentity'
         }
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
@@ -318,6 +318,45 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         value: '${keyVaultReference}${smtpPasswordValue!.properties.secretUriWithVersion})'
       }] : [])
     }
+  }
+}
+
+resource functionBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(functionStorageAccount.id, functionApp.id, 'Storage Blob Data Owner')
+  scope: functionStorageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
+    )
+  }
+}
+
+resource functionQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(functionStorageAccount.id, functionApp.id, 'Storage Queue Data Contributor')
+  scope: functionStorageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
+    )
+  }
+}
+
+resource functionTableRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(functionStorageAccount.id, functionApp.id, 'Storage Table Data Contributor')
+  scope: functionStorageAccount
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
+    )
   }
 }
 

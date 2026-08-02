@@ -4,6 +4,7 @@ import re
 import time
 import gzip
 import zlib
+import ipaddress
 import logging
 from email.utils import formatdate
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
@@ -23,6 +24,8 @@ LISTINGS_CACHE_TIME = 0
 CACHE_TTL_SECONDS = 5 * 60
 LISTINGS_REFRESH_SECONDS = 3 * 60 * 60
 LISTINGS_FETCH_TIMEOUT_SECONDS = 120
+REFRESH_COOLDOWN_SECONDS = 15 * 60
+LAST_REFRESH_REQUEST_TIME = 0
 LISTINGS_BLOB_CONTAINER_URL = os.environ.get(
     'LISTINGS_BLOB_CONTAINER_URL',
     'https://maklerappstorageaccount.blob.core.windows.net/maklerapp',
@@ -143,19 +146,13 @@ def write_listings_blob(listings):
 
 
 def format_blob_error(error):
-    if not isinstance(error, HTTPError):
-        return str(error)
-    try:
-        response_body = error.read().decode('utf-8', errors='replace').strip()
-    except Exception:
-        response_body = ''
-    error_code = error.headers.get('x-ms-error-code', '')
-    details = f'Azure Blob HTTP {error.code}'
-    if error_code:
-        details += f' ({error_code})'
-    if response_body:
-        details += f': {response_body[:1000]}'
-    return details
+    if isinstance(error, HTTPError):
+        error_code = error.headers.get('x-ms-error-code', '')
+        details = f'Azure Blob HTTP {error.code}'
+        if error_code:
+            details += f' ({error_code})'
+        return details
+    return f'{type(error).__name__}: blob request failed'
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -261,7 +258,7 @@ VORSTADTMAKLER_URL = 'https://vorstadtmakler.de/immobilien'
 TEAMBIM_URL = 'https://team-bim.de/#imag_immobiliensuche'
 SOZIUS_URL = 'https://www.sozius-immobilien.de/immobilien/wohnen/'
 ANDREAS_SCHMID_URL = 'https://www.andreas-schmid-immobilien.de/alle-immobilien/'
-MUENCHNER_IMMOBILIEN_URL = 'http://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html'
+MUENCHNER_IMMOBILIEN_URL = 'https://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html'
 AUSDEMHAEUSCHEN_URL = 'https://www.ausdemhaeuschen.com/angebot'
 HALLINGER_URL = 'https://www.hallingerimmobilien.de/kaufobjekte.php'
 CKI_URL = 'https://cki-immobilien.de/immobilienangebote/kaufen/'
@@ -606,6 +603,43 @@ def add_listing(listings, seen, title: str, price: str, area: str, location: str
     seen.add(link_key)
     seen.add(key)
     listings.append(item)
+
+
+def iter_configured_urls(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, (list, tuple, set)):
+        for item in value:
+            yield from iter_configured_urls(item)
+
+
+def allowed_fetch_hosts():
+    hosts = set()
+    for name, value in globals().items():
+        if not (name.endswith('_URL') or name.endswith('_URLS')):
+            continue
+        for configured_url in iter_configured_urls(value):
+            hostname = (urlparse(configured_url).hostname or '').lower().rstrip('.')
+            if hostname:
+                hosts.add(hostname)
+                if hostname.startswith('www.'):
+                    hosts.add(hostname[4:])
+    return hosts
+
+
+def validate_fetch_url(url):
+    parsed = urlparse(url or '')
+    hostname = (parsed.hostname or '').lower().rstrip('.')
+    if parsed.scheme.lower() != 'https' or not hostname:
+        raise ValueError('Only HTTPS broker URLs are allowed')
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is not None and (address.is_private or address.is_loopback or address.is_link_local):
+        raise ValueError('Private or link-local fetch targets are not allowed')
+    if hostname not in allowed_fetch_hosts():
+        raise ValueError('Unapproved broker host')
 
 
 def clean_location_value(value: str) -> str:
@@ -1134,6 +1168,7 @@ def recover_location_from_detail_page(link: str, title: str, current_location: s
 
 
 def fetch_html(url: str, timeout: int = 20) -> str:
+    validate_fetch_url(url)
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     response = urllib.request.urlopen(req, timeout=timeout)
     try:
@@ -5440,7 +5475,7 @@ def fetch_listings(force_refresh=False):
         except Exception as error:
             LOGGER.warning(
                 'Could not read listings blob %s: %s',
-                listings_blob_url(),
+                LISTINGS_BLOB_NAME,
                 format_blob_error(error),
             )
             persisted_listings = None
@@ -5484,14 +5519,23 @@ def fetch_listings(force_refresh=False):
         try:
             write_listings_blob(listings)
         except Exception as error:
-            LOGGER.exception(
+            LOGGER.error(
                 'Could not write listings blob %s: %s',
-                listings_blob_url(),
+                LISTINGS_BLOB_NAME,
                 format_blob_error(error),
             )
             if force_refresh:
                 raise
     return LISTINGS_CACHE
+
+
+def request_origin_allowed(handler):
+    origin = handler.headers.get('Origin')
+    if not origin:
+        return True
+    parsed_origin = urlparse(origin)
+    request_host = handler.headers.get('Host', '')
+    return parsed_origin.scheme in {'http', 'https'} and parsed_origin.netloc == request_host
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -5567,7 +5611,12 @@ class Handler(BaseHTTPRequestHandler):
 
         function setLoading() {
             root.className = 'loading';
-            root.innerHTML = '<span class="spinner"></span><span>Lade Inserate…</span>';
+            root.replaceChildren();
+            const spinner = document.createElement('span');
+            spinner.className = 'spinner';
+            const label = document.createElement('span');
+            label.textContent = 'Lade Inserate...';
+            root.append(spinner, label);
         }
 
         function formatLabel(key) {
@@ -5598,19 +5647,49 @@ class Handler(BaseHTTPRequestHandler):
         function renderListings(listings) {
             if (!listings.length) {
                 root.className = '';
-                root.innerHTML = '<p>Keine Inserate gefunden.</p>';
+                root.textContent = 'Keine Inserate gefunden.';
                 return;
             }
             root.className = '';
-            root.innerHTML = listings.map(item => `
-                <article class="card">
-                    <div class="title">${item.title}</div>
-                    <div class="meta">Preis: ${item.price || 'nicht verfügbar'}</div>
-                    <div class="meta">Wohnfläche: ${item.area_sqm ? item.area_sqm + ' m²' : 'nicht verfügbar'}</div>
-                    <div class="meta">Ort: ${item.location || 'nicht verfügbar'}</div>
-                    <div class="meta"><a href="${item.link}" target="_blank" rel="noreferrer">Zum Exposé</a></div>
-                </article>
-            `).join('');
+            root.replaceChildren();
+            listings.forEach(item => {
+                const card = document.createElement('article');
+                card.className = 'card';
+
+                const title = document.createElement('div');
+                title.className = 'title';
+                title.textContent = item.title || '';
+
+                const price = document.createElement('div');
+                price.className = 'meta';
+                price.textContent = `Preis: ${item.price || 'nicht verfügbar'}`;
+
+                const area = document.createElement('div');
+                area.className = 'meta';
+                area.textContent = `Wohnfläche: ${item.area_sqm ? `${item.area_sqm} m²` : 'nicht verfügbar'}`;
+
+                const location = document.createElement('div');
+                location.className = 'meta';
+                location.textContent = `Ort: ${item.location || 'nicht verfügbar'}`;
+
+                const linkRow = document.createElement('div');
+                linkRow.className = 'meta';
+                const link = document.createElement('a');
+                try {
+                    const parsedLink = new URL(item.link, window.location.origin);
+                    if (parsedLink.protocol === 'https:') {
+                        link.href = parsedLink.href;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.textContent = 'Zum Exposé';
+                        linkRow.append(link);
+                    }
+                } catch (error) {
+                }
+
+                card.append(title, price, area, location, linkRow);
+                root.append(card);
+            });
         }
 
         function renderActiveListings() {
@@ -5620,7 +5699,12 @@ class Handler(BaseHTTPRequestHandler):
             const blockedReason = blockedBrokerReasons[activeTab];
             if (blockedReason) {
                 root.className = '';
-                root.innerHTML = `<p><strong>Status:</strong> ${blockedReason}</p>`;
+                root.replaceChildren();
+                const status = document.createElement('p');
+                const label = document.createElement('strong');
+                label.textContent = 'Status: ';
+                status.append(label, document.createTextNode(blockedReason));
+                root.append(status);
                 return;
             }
             const list = filterListings(cachedData[activeTab] || []);
@@ -5642,7 +5726,7 @@ class Handler(BaseHTTPRequestHandler):
         function renderTabs(data) {
             const keys = filterBrokerKeys(data);
             if (!keys.length) {
-                tabsRoot.innerHTML = '<span class="meta">Keine Makler gefunden.</span>';
+                tabsRoot.textContent = 'Keine Makler gefunden.';
                 return;
             }
 
@@ -5650,21 +5734,22 @@ class Handler(BaseHTTPRequestHandler):
                 activeTab = keys[0];
             }
 
-            tabsRoot.innerHTML = keys.map(key => {
+            tabsRoot.replaceChildren();
+            keys.forEach(key => {
                 const count = (data[key] || []).length;
-                const activeClass = key === activeTab ? ' active' : '';
+                const button = document.createElement('button');
+                button.className = `tab${key === activeTab ? ' active' : ''}`;
+                button.dataset.tab = key;
                 const blockedReason = blockedBrokerReasons[key];
                 const suffix = blockedReason ? ` (${blockedReason})` : ` (${count})`;
-                return `<button class="tab${activeClass}" data-tab="${key}">${formatLabel(key)}${suffix}</button>`;
-            }).join('');
-
-            tabsRoot.querySelectorAll('.tab').forEach(button => {
+                button.textContent = `${formatLabel(key)}${suffix}`;
                 button.addEventListener('click', () => {
                     tabsRoot.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
                     button.classList.add('active');
                     activeTab = button.dataset.tab;
                     renderActiveListings();
                 });
+                tabsRoot.append(button);
             });
         }
 
@@ -5689,7 +5774,7 @@ class Handler(BaseHTTPRequestHandler):
                 renderActiveListings();
             } catch (err) {
                 root.className = '';
-                root.innerHTML = '<p>Die Inserate konnten nicht geladen werden.</p>';
+                root.textContent = 'Die Inserate konnten nicht geladen werden.';
             }
         }
 
@@ -5708,7 +5793,7 @@ class Handler(BaseHTTPRequestHandler):
                 renderActiveListings();
             } catch (err) {
                 root.className = '';
-                root.innerHTML = `<p>${err.message}</p>`;
+                root.textContent = err.message || 'Aktualisierung fehlgeschlagen.';
             } finally {
                 refreshAllButton.disabled = false;
             }
@@ -5746,14 +5831,35 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        global LAST_REFRESH_REQUEST_TIME
         if self.path == '/api/listings/refresh-all':
+            if not request_origin_allowed(self):
+                body = json.dumps({'ok': False, 'error': 'Origin not allowed'}).encode('utf-8')
+                self.send_response(403)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            now = time.time()
+            if now - LAST_REFRESH_REQUEST_TIME < REFRESH_COOLDOWN_SECONDS:
+                body = json.dumps({'ok': False, 'error': 'Refresh is temporarily unavailable'}).encode('utf-8')
+                self.send_response(429)
+                self.send_header('Retry-After', str(REFRESH_COOLDOWN_SECONDS))
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            LAST_REFRESH_REQUEST_TIME = now
             try:
                 listings = fetch_listings(force_refresh=True)
                 body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
                 self.send_response(200)
             except Exception as error:
-                LOGGER.exception('Global listings refresh failed: %s', error)
-                body = json.dumps({'ok': False, 'error': format_blob_error(error)}).encode('utf-8')
+                LOGGER.error('Global listings refresh failed: %s', format_blob_error(error))
+                body = json.dumps({'ok': False, 'error': 'Aktualisierung fehlgeschlagen'}).encode('utf-8')
                 self.send_response(502)
         else:
             body = json.dumps({'ok': False, 'error': 'Unknown endpoint'}).encode('utf-8')

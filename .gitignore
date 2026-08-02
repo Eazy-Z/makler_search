@@ -5,3 +5,4 @@ __pycache__/
 .vscode/
 *.log
 infra/main.parameters.json
+infra/main.json

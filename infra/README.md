@@ -117,11 +117,9 @@ creates a first-run chicken-and-egg problem. After these one-time bootstrap
 assignments, rerun the GitHub Action. The Bicep deployment can then create and
 maintain the Web App Blob access role.
 
-The Function host storage connection is stored as a Key Vault secret rather
-than directly in Function App settings. A future identity-based Functions
-Storage migration can remove the remaining storage account key dependency;
-the current Consumption setup keeps the key but limits its exposure through
-Key Vault references.
+The Function host storage uses the Function App's system-assigned managed
+identity with Blob, Queue, and Table data roles. No storage account key is
+placed in Function settings or Key Vault.
 
 ## Important network limitation
 

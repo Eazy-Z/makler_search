@@ -19,13 +19,13 @@ jobs:
       contents: read #This is required for actions/checkout
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Validate Bicep infrastructure
         run: az bicep build --file infra/main.bicep
 
       - name: Set up Python version
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.14'
 
@@ -39,7 +39,7 @@ jobs:
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
       - name: Upload artifact for deployment jobs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: python-app
           path: |
@@ -68,17 +68,18 @@ jobs:
       AZURE_SMTP_USERNAME: ${{ vars.AZURE_SMTP_USERNAME || '' }}
       AZURE_EMAIL_FROM: ${{ vars.AZURE_EMAIL_FROM || '' }}
       AZURE_EMAIL_RECIPIENTS: ${{ vars.AZURE_EMAIL_RECIPIENTS || '' }}
+      DEPLOYMENT_PARAMETERS_FILE: ${{ runner.temp }}/maklerapp.parameters.json
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
 
     steps:
       - name: Download artifact from build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: python-app
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4D5DFEB4D24D4249B28893F961E67C9D }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9CAA3C4C152D4ABDAE8C259E1C2AF59B }}
@@ -89,29 +90,49 @@ jobs:
           ENTRA_CLIENT_SECRET: ${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}
         run: test -n "$ENTRA_CLIENT_SECRET"
 
+      - name: Prepare deployment parameters
+        env:
+          DEPLOY_ENTRA_CLIENT_SECRET: ${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}
+          DEPLOY_SMTP_PASSWORD: ${{ secrets.AZURE_SMTP_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          values = {
+              'location': os.environ['AZURE_LOCATION'],
+              'webAppName': os.environ['AZURE_WEBAPP_NAME'],
+              'entraClientId': os.environ['AZURE_ENTRA_CLIENT_ID'],
+              'entraClientSecret': os.environ['DEPLOY_ENTRA_CLIENT_SECRET'],
+              'keyVaultName': os.environ['AZURE_KEY_VAULT_NAME'],
+              'monthlyBudgetAmount': int(os.environ['AZURE_MONTHLY_BUDGET_AMOUNT']),
+              'budgetAlertEmail': os.environ['AZURE_BUDGET_ALERT_EMAIL'],
+              'emailSmtpHost': os.environ['AZURE_SMTP_HOST'],
+              'emailSmtpPort': os.environ['AZURE_SMTP_PORT'],
+              'emailSmtpUsername': os.environ['AZURE_SMTP_USERNAME'],
+              'emailSmtpPassword': os.environ['DEPLOY_SMTP_PASSWORD'],
+              'emailFromAddress': os.environ['AZURE_EMAIL_FROM'],
+              'emailRecipients': os.environ['AZURE_EMAIL_RECIPIENTS'],
+          }
+          parameters = {'parameters': {key: {'value': value} for key, value in values.items()}}
+          with open(os.environ['DEPLOYMENT_PARAMETERS_FILE'], 'w', encoding='utf-8') as stream:
+              json.dump(parameters, stream)
+          PY
+
       - name: Deploy Bicep infrastructure
         run: |
           az deployment group create \
             --name "maklerapp-${{ github.run_number }}" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
-            --parameters \
-              location="$AZURE_LOCATION" \
-              webAppName="$AZURE_WEBAPP_NAME" \
-              entraClientId="$AZURE_ENTRA_CLIENT_ID" \
-              entraClientSecret="${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}" \
-              keyVaultName="$AZURE_KEY_VAULT_NAME" \
-              monthlyBudgetAmount="$AZURE_MONTHLY_BUDGET_AMOUNT" \
-              budgetAlertEmail="$AZURE_BUDGET_ALERT_EMAIL" \
-              emailSmtpHost="$AZURE_SMTP_HOST" \
-              emailSmtpPort="$AZURE_SMTP_PORT" \
-              emailSmtpUsername="$AZURE_SMTP_USERNAME" \
-              emailSmtpPassword="${{ secrets.AZURE_SMTP_PASSWORD }}" \
-              emailFromAddress="$AZURE_EMAIL_FROM" \
-              emailRecipients="$AZURE_EMAIL_RECIPIENTS"
+            --parameters "@$DEPLOYMENT_PARAMETERS_FILE"
+
+      - name: Remove temporary deployment parameters
+        if: ${{ always() }}
+        run: rm -f "$DEPLOYMENT_PARAMETERS_FILE"
 
       - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
+        uses: azure/webapps-deploy@657f0700ea5214d56a0400d8ac5e8023c963d25d # v3.0.6
         id: deploy-to-webapp
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
