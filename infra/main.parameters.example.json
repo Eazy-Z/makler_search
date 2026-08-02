@@ -26,6 +26,9 @@
     "functionAppName": {
       "value": "<globally-unique-function-app-name>"
     },
+    "keyVaultName": {
+      "value": "<globally-unique-key-vault-name>"
+    },
     "monthlyBudgetAmount": {
       "value": 5
     },

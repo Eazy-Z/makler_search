@@ -8,6 +8,8 @@ resource group `MaklerApp_v2` in `westus3`:
 - Private listing container `maklerapp` in a `Standard_LRS` / `Hot` storage account
 - Separate `Standard_LRS` / `Hot` storage account for the Function host
 - System-assigned identity and `Storage Blob Data Contributor` for the Web App
+- Blob RBAC scoped to the private listing container
+- Key Vault-backed Entra, SMTP, and Function Storage secrets
 - App Service Authentication with the supplied Entra tenant
 - Monthly Resource Group budget with 80% and 100% email alerts
 
@@ -70,11 +72,20 @@ AZURE_RESOURCE_GROUP=<resource-group-name>
 AZURE_LOCATION=<azure-region>
 AZURE_MONTHLY_BUDGET_AMOUNT=5
 AZURE_BUDGET_ALERT_EMAIL=<budget-alert-email>
+AZURE_ENTRA_CLIENT_ID=<entra-client-id>
+AZURE_KEY_VAULT_NAME=<globally-unique-key-vault-name>
+AZURE_SMTP_HOST=smtp.gmail.com
+AZURE_SMTP_PORT=587
+AZURE_SMTP_USERNAME=<gmail-address>
+AZURE_EMAIL_FROM=<gmail-address>
+AZURE_EMAIL_RECIPIENTS=<comma-separated-5-to-10-addresses>
 ```
 
 `AZURE_BUDGET_ALERT_EMAIL` must be set to create or update the Bicep-managed
-budget notifications. Keep Entra client secrets and SMTP passwords in GitHub
-Actions secrets, not repository variables.
+budget notifications. Store `AZURE_ENTRA_CLIENT_SECRET` and
+`AZURE_SMTP_PASSWORD` as GitHub Actions secrets. For Gmail,
+`AZURE_SMTP_PASSWORD` must be a Google App Password, not the normal account
+password.
 
 The service principal referenced by the existing `AZUREAPPSERVICE_*` secrets
 must have `Contributor` or `Website Contributor` on resource group

@@ -61,6 +61,13 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westus3' }}
       AZURE_MONTHLY_BUDGET_AMOUNT: ${{ vars.AZURE_MONTHLY_BUDGET_AMOUNT || '5' }}
       AZURE_BUDGET_ALERT_EMAIL: ${{ vars.AZURE_BUDGET_ALERT_EMAIL || '' }}
+      AZURE_ENTRA_CLIENT_ID: ${{ vars.AZURE_ENTRA_CLIENT_ID || 'a2f72365-dee3-4d7b-a559-71bcc407209e' }}
+      AZURE_KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME || 'maklerappv2kv' }}
+      AZURE_SMTP_HOST: ${{ vars.AZURE_SMTP_HOST || 'smtp.gmail.com' }}
+      AZURE_SMTP_PORT: ${{ vars.AZURE_SMTP_PORT || '587' }}
+      AZURE_SMTP_USERNAME: ${{ vars.AZURE_SMTP_USERNAME || '' }}
+      AZURE_EMAIL_FROM: ${{ vars.AZURE_EMAIL_FROM || '' }}
+      AZURE_EMAIL_RECIPIENTS: ${{ vars.AZURE_EMAIL_RECIPIENTS || '' }}
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
@@ -77,6 +84,11 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9CAA3C4C152D4ABDAE8C259E1C2AF59B }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_93E5F25F36ED4D0696FECC2B9FEAD7C3 }}
 
+      - name: Validate required deployment secrets
+        env:
+          ENTRA_CLIENT_SECRET: ${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}
+        run: test -n "$ENTRA_CLIENT_SECRET"
+
       - name: Deploy Bicep infrastructure
         run: |
           az deployment group create \
@@ -86,8 +98,17 @@ jobs:
             --parameters \
               location="$AZURE_LOCATION" \
               webAppName="$AZURE_WEBAPP_NAME" \
+              entraClientId="$AZURE_ENTRA_CLIENT_ID" \
+              entraClientSecret="${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}" \
+              keyVaultName="$AZURE_KEY_VAULT_NAME" \
               monthlyBudgetAmount="$AZURE_MONTHLY_BUDGET_AMOUNT" \
-              budgetAlertEmail="$AZURE_BUDGET_ALERT_EMAIL"
+              budgetAlertEmail="$AZURE_BUDGET_ALERT_EMAIL" \
+              emailSmtpHost="$AZURE_SMTP_HOST" \
+              emailSmtpPort="$AZURE_SMTP_PORT" \
+              emailSmtpUsername="$AZURE_SMTP_USERNAME" \
+              emailSmtpPassword="${{ secrets.AZURE_SMTP_PASSWORD }}" \
+              emailFromAddress="$AZURE_EMAIL_FROM" \
+              emailRecipients="$AZURE_EMAIL_RECIPIENTS"
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3

@@ -6,8 +6,8 @@ param location string = 'westus3'
 @description('Existing Entra tenant ID.')
 param tenantId string = '6bb6fc0a-c0e2-425e-813d-0ae4d8235cd9'
 
-@description('Entra application client ID used by App Service Authentication. Leave empty only for an initial infrastructure deployment; authentication is then not configured.')
-param entraClientId string = ''
+@description('Entra application client ID used by App Service Authentication.')
+param entraClientId string
 
 @secure()
 @description('Client secret for the Entra application. Store this in Key Vault for production use.')
@@ -24,6 +24,9 @@ param webAppName string = 'maklerapp-v2'
 
 @description('Linux Consumption Function App name.')
 param functionAppName string = 'maklerapp-v2-timer'
+
+@description('Globally unique Key Vault name for application secrets.')
+param keyVaultName string = 'maklerappv2kv'
 
 @description('Monthly Resource Group budget amount in the subscription billing currency.')
 param monthlyBudgetAmount int = 5
@@ -64,6 +67,7 @@ module platform './resources.bicep' = {
     functionStorageAccountName: functionStorageAccountName
     webAppName: webAppName
     functionAppName: functionAppName
+    keyVaultName: keyVaultName
     monthlyBudgetAmount: monthlyBudgetAmount
     budgetAlertEmail: budgetAlertEmail
     backendRefreshUrl: backendRefreshUrl

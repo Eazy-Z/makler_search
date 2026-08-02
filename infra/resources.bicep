@@ -9,6 +9,7 @@ param listingsStorageAccountName string
 param functionStorageAccountName string
 param webAppName string
 param functionAppName string
+param keyVaultName string
 param monthlyBudgetAmount int
 param budgetAlertEmail string
 param backendRefreshUrl string
@@ -24,6 +25,7 @@ var listingsContainerName = 'maklerapp'
 var listingsBlobName = 'latest.json'
 var listingsContainerUrl = 'https://${listingsStorageAccount.name}.blob.core.windows.net/${listingsContainerName}'
 var entraIssuer = 'https://login.microsoftonline.com/${tenantId}/v2.0'
+var keyVaultReference = '@Microsoft.KeyVault(SecretUri='
 
 resource monthlyBudget 'Microsoft.Consumption/budgets@2023-05-01' = if (!empty(budgetAlertEmail)) {
   name: 'MaklerApp-v2-monthly-limit'
@@ -101,6 +103,46 @@ resource functionStorageTableService 'Microsoft.Storage/storageAccounts/tableSer
   name: '${functionStorageAccount.name}/default'
 }
 
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: keyVaultName
+  location: location
+  properties: {
+    tenantId: tenantId
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 90
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource entraClientSecretValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(entraClientSecret)) {
+  name: 'entra-client-secret'
+  parent: keyVault
+  properties: {
+    value: entraClientSecret
+  }
+}
+
+resource smtpPasswordValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(emailSmtpPassword)) {
+  name: 'smtp-password'
+  parent: keyVault
+  properties: {
+    value: emailSmtpPassword
+  }
+}
+
+resource functionStorageConnectionValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  name: 'function-storage-connection'
+  parent: keyVault
+  properties: {
+    value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccount.name};AccountKey=${listKeys(functionStorageAccount.id, functionStorageAccount.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+  }
+}
+
 resource webPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: '${webAppName}-plan'
   location: location
@@ -129,7 +171,7 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       alwaysOn: false
-      appSettings: [
+      appSettings: concat([
         {
           name: 'LISTINGS_BLOB_ENABLED'
           value: 'true'
@@ -142,11 +184,10 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'LISTINGS_BLOB_NAME'
           value: listingsBlobName
         }
-        {
-          name: 'ENTRA_CLIENT_SECRET'
-          value: entraClientSecret
-        }
-      ]
+      ], !empty(entraClientSecret) ? [{
+        name: 'ENTRA_CLIENT_SECRET'
+        value: '${keyVaultReference}${entraClientSecretValue!.properties.secretUriWithVersion})'
+      }] : [])
     }
   }
 }
@@ -187,8 +228,8 @@ resource webAppAuth 'Microsoft.Web/sites/config@2022-09-01' = if (!empty(entraCl
 }
 
 resource webAppBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(listingsStorageAccount.id, webApp.id, 'Storage Blob Data Contributor')
-  scope: listingsStorageAccount
+  name: guid(listingsContainer.id, webApp.id, 'Storage Blob Data Contributor')
+  scope: listingsContainer
   properties: {
     principalId: webApp.identity.principalId
     principalType: 'ServicePrincipal'
@@ -222,11 +263,12 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
   properties: {
     serverFarmId: functionPlan.id
     httpsOnly: true
+    publicNetworkAccess: 'Disabled'
     siteConfig: {
       linuxFxVersion: 'Python|3.12'
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
-      appSettings: [
+      appSettings: concat([
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
@@ -241,7 +283,7 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         }
         {
           name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccount.name};AccountKey=${listKeys(functionStorageAccount.id, functionStorageAccount.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+          value: '${keyVaultReference}${functionStorageConnectionValue.properties.secretUriWithVersion})'
         }
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
@@ -264,10 +306,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: emailSmtpUsername
         }
         {
-          name: 'EMAIL_SMTP_PASSWORD'
-          value: emailSmtpPassword
-        }
-        {
           name: 'EMAIL_FROM_ADDRESS'
           value: emailFromAddress
         }
@@ -275,8 +313,37 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'EMAIL_RECIPIENTS'
           value: emailRecipients
         }
-      ]
+      ], !empty(emailSmtpPassword) ? [{
+        name: 'EMAIL_SMTP_PASSWORD'
+        value: '${keyVaultReference}${smtpPasswordValue!.properties.secretUriWithVersion})'
+      }] : [])
     }
+  }
+}
+
+resource webAppKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, webApp.id, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    principalId: webApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    )
+  }
+}
+
+resource functionKeyVaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, functionApp.id, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    )
   }
 }
 
