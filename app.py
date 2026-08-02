@@ -56,11 +56,21 @@ def blob_request_headers():
     if AZURE_STORAGE_SAS_TOKEN:
         return {'x-ms-version': '2021-12-02'}
 
-    token_url = (
-        'http://169.254.169.254/metadata/identity/oauth2/token'
-        '?api-version=2019-08-01&resource=https%3A%2F%2Fstorage.azure.com%2F'
-    )
-    token_request = urllib.request.Request(token_url, headers={'Metadata': 'true'})
+    identity_endpoint = os.environ.get('IDENTITY_ENDPOINT')
+    identity_header = os.environ.get('IDENTITY_HEADER')
+    if identity_endpoint and identity_header:
+        token_url = (
+            f'{identity_endpoint}?api-version=2019-08-01'
+            '&resource=https%3A%2F%2Fstorage.azure.com%2F'
+        )
+        token_headers = {'X-IDENTITY-HEADER': identity_header}
+    else:
+        token_url = (
+            'http://169.254.169.254/metadata/identity/oauth2/token'
+            '?api-version=2019-08-01&resource=https%3A%2F%2Fstorage.azure.com%2F'
+        )
+        token_headers = {'Metadata': 'true'}
+    token_request = urllib.request.Request(token_url, headers=token_headers)
     with urllib.request.urlopen(token_request, timeout=10) as response:
         token = json.loads(response.read().decode('utf-8'))['access_token']
     return {
