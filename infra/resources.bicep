@@ -221,7 +221,7 @@ resource webAppAuth 'Microsoft.Web/sites/config@2022-09-01' = if (!empty(entraCl
     }
     login: {
       tokenStore: {
-        enabled: true
+        enabled: false
       }
     }
   }

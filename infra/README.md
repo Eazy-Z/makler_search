@@ -117,10 +117,16 @@ creates a first-run chicken-and-egg problem. After these one-time bootstrap
 assignments, rerun the GitHub Action. The Bicep deployment can then create and
 maintain the Web App Blob access role.
 
+The Function host storage connection is stored as a Key Vault secret rather
+than directly in Function App settings. A future identity-based Functions
+Storage migration can remove the remaining storage account key dependency;
+the current Consumption setup keeps the key but limits its exposure through
+Key Vault references.
+
 ## Important network limitation
 
 An F1 App Service cannot use VNet Integration. Therefore this cost-minimal
-variant keeps the Blob endpoint public at the network layer while disabling
+variant keeps the Storage endpoints public at the network layer while disabling
 anonymous Blob access and enforcing the Web App managed identity with RBAC.
 The Blob container is not public, and the app is the only identity granted
 access by this template.
