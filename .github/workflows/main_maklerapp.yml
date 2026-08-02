@@ -79,12 +79,11 @@ jobs:
 
       - name: Deploy Bicep infrastructure
         run: |
-          az deployment sub create \
+          az deployment group create \
             --name "maklerapp-${{ github.run_number }}" \
-            --location "$AZURE_LOCATION" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
             --parameters \
-              resourceGroupName="$AZURE_RESOURCE_GROUP" \
               location="$AZURE_LOCATION" \
               webAppName="$AZURE_WEBAPP_NAME" \
               monthlyBudgetAmount="$AZURE_MONTHLY_BUDGET_AMOUNT" \

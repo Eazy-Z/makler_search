@@ -1,7 +1,7 @@
 # Azure infrastructure
 
-This Bicep deployment creates the Makler Search platform in `westus3` and in
-resource group `MaklerApp_v2`:
+This Bicep deployment creates or updates the Makler Search platform in
+resource group `MaklerApp_v2` in `westus3`:
 
 - Linux App Service on the `F1` Free plan
 - Linux Function App on the `Y1` Consumption plan
@@ -13,7 +13,8 @@ resource group `MaklerApp_v2`:
 
 ## Deploy
 
-1. Copy `main.parameters.example.json` to a file outside source control.
+1. Ensure the target resource group exists, then copy
+  `main.parameters.example.json` to a file outside source control.
 2. Replace all `<...>` values. Storage, Web App, and Function names must be
    globally unique where Azure requires it.
   Set `budgetAlertEmail` to enable the `5`-currency-unit monthly budget;
@@ -23,9 +24,9 @@ resource group `MaklerApp_v2`:
 ```bash
 az login --tenant 6bb6fc0a-c0e2-425e-813d-0ae4d8235cd9
 az account set --subscription 5b7b398e-f933-478c-8f6f-b7fa3e224df8
-az deployment sub create \
+az deployment group create \
   --name maklerapp-v2 \
-  --location westus3 \
+  --resource-group MaklerApp_v2 \
   --template-file infra/main.bicep \
   --parameters @infra/main.parameters.json
 ```
@@ -57,9 +58,10 @@ Use deployment-time secure parameters or Key Vault references for production.
 ## GitHub Actions
 
 The workflow in `.github/workflows/main_maklerapp.yml` validates the Bicep
-template, deploys the Bicep infrastructure, and then deploys the Python app to
-`maklerapp-v2` by default. The Azure CLI uses its default incremental mode, so
-resources not managed by this template are not deleted. Configure these
+template, deploys the Bicep infrastructure to the existing resource group,
+and then deploys the Python app to `maklerapp-v2` by default. The Azure CLI
+uses its default incremental mode, so resources not managed by this template
+are not deleted. Configure these
 optional repository variables when the defaults differ:
 
 ```text
@@ -75,12 +77,12 @@ budget notifications. Keep Entra client secrets and SMTP passwords in GitHub
 Actions secrets, not repository variables.
 
 The service principal referenced by the existing `AZUREAPPSERVICE_*` secrets
-must have `Contributor` on the subscription because the workflow runs a
-subscription-scoped Bicep deployment. Its federated GitHub credential must
+must have `Contributor` or `Website Contributor` on resource group
+`MaklerApp_v2`, because the workflow runs a resource-group-scoped Bicep
+deployment. Its federated GitHub credential must
 match the repository, branch `main`, and workflow environment used by the
 action. The OIDC login continues to use the existing tenant and subscription
-secrets. A resource-group-only `Contributor` or `Website Contributor` role is
-not sufficient for the infrastructure step.
+secrets. A subscription-level role is not required for this workflow.
 
 ## Important network limitation
 

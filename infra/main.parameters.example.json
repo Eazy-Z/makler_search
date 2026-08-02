@@ -5,9 +5,6 @@
     "location": {
       "value": "westus3"
     },
-    "resourceGroupName": {
-      "value": "MaklerApp_v2"
-    },
     "tenantId": {
       "value": "6bb6fc0a-c0e2-425e-813d-0ae4d8235cd9"
     },

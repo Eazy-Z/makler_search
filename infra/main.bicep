@@ -1,10 +1,7 @@
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @description('Azure region for all regional resources.')
 param location string = 'westus3'
-
-@description('Resource group for the Makler Search platform.')
-param resourceGroupName string = 'MaklerApp_v2'
 
 @description('Existing Entra tenant ID.')
 param tenantId string = '6bb6fc0a-c0e2-425e-813d-0ae4d8235cd9'
@@ -59,14 +56,8 @@ param emailFromAddress string = ''
 @description('Comma-separated BCC recipients. The timer function must enforce 5-10 valid unique addresses.')
 param emailRecipients string = ''
 
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: resourceGroupName
-  location: location
-}
-
 module platform './resources.bicep' = {
   name: 'maklerSearchPlatform'
-  scope: resourceGroup
   params: {
     location: location
     tenantId: tenantId
@@ -89,7 +80,7 @@ module platform './resources.bicep' = {
   }
 }
 
-output resourceGroupId string = resourceGroup.id
+output resourceGroupId string = resourceGroup().id
 output webAppName string = webAppName
 output functionAppName string = functionAppName
 output listingsStorageAccountName string = listingsStorageAccountName
