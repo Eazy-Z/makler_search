@@ -10,6 +10,8 @@ param functionStorageAccountName string
 param webAppName string
 param functionAppName string
 param githubActionsPrincipalId string
+param monthlyBudgetAmount int
+param budgetAlertEmail string
 param backendRefreshUrl string
 param emailSmtpHost string
 param emailSmtpPort string
@@ -23,6 +25,33 @@ var listingsContainerName = 'maklerapp'
 var listingsBlobName = 'latest.json'
 var listingsContainerUrl = 'https://${listingsStorageAccount.name}.blob.core.windows.net/${listingsContainerName}'
 var entraIssuer = 'https://login.microsoftonline.com/${tenantId}/v2.0'
+
+resource monthlyBudget 'Microsoft.Consumption/budgets@2023-05-01' = if (!empty(budgetAlertEmail)) {
+  name: 'MaklerApp-v2-monthly-limit'
+  properties: {
+    category: 'Cost'
+    amount: monthlyBudgetAmount
+    timeGrain: 'Monthly'
+    timePeriod: {
+      startDate: '2026-08-01T00:00:00Z'
+      endDate: '2030-12-31T23:59:59Z'
+    }
+    notifications: {
+      actual_GreaterThan_80_Percent: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 80
+        contactEmails: [budgetAlertEmail]
+      }
+      actual_GreaterThan_100_Percent: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 100
+        contactEmails: [budgetAlertEmail]
+      }
+    }
+  }
+}
 
 resource listingsStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: listingsStorageAccountName

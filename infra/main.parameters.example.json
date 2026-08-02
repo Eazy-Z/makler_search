@@ -32,6 +32,12 @@
     "githubActionsPrincipalId": {
       "value": "<github-actions-service-principal-object-id>"
     },
+    "monthlyBudgetAmount": {
+      "value": 5
+    },
+    "budgetAlertEmail": {
+      "value": "<budget-alert-email>"
+    },
     "backendRefreshUrl": {
       "value": "https://<web-app-name>.azurewebsites.net/internal/refresh"
     },

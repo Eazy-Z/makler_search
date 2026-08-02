@@ -9,12 +9,15 @@ resource group `MaklerApp_v2`:
 - Separate `Standard_LRS` / `Hot` storage account for the Function host
 - System-assigned identity and `Storage Blob Data Contributor` for the Web App
 - App Service Authentication with the supplied Entra tenant
+- Monthly Resource Group budget with 80% and 100% email alerts
 
 ## Deploy
 
 1. Copy `main.parameters.example.json` to a file outside source control.
 2. Replace all `<...>` values. Storage, Web App, and Function names must be
    globally unique where Azure requires it.
+  Set `budgetAlertEmail` to enable the `5`-currency-unit monthly budget;
+  adjust `monthlyBudgetAmount` if needed.
 3. Deploy with the requested subscription:
 
 ```bash
@@ -54,18 +57,30 @@ Use deployment-time secure parameters or Key Vault references for production.
 ## GitHub Actions
 
 The workflow in `.github/workflows/main_maklerapp.yml` validates the Bicep
-template and deploys the Python app to `maklerapp-v2` by default. If the
-globally unique Web App name differs, create this repository variable:
+template, deploys the Bicep infrastructure, and then deploys the Python app to
+`maklerapp-v2` by default. The infrastructure deployment uses incremental mode
+so resources not managed by this template are not deleted. Configure these
+optional repository variables when the defaults differ:
 
 ```text
 AZURE_WEBAPP_NAME=<deployed-web-app-name>
+AZURE_RESOURCE_GROUP=<resource-group-name>
+AZURE_LOCATION=<azure-region>
+AZURE_MONTHLY_BUDGET_AMOUNT=5
+AZURE_BUDGET_ALERT_EMAIL=<budget-alert-email>
 ```
 
+`AZURE_BUDGET_ALERT_EMAIL` must be set to create or update the Bicep-managed
+budget notifications. Keep Entra client secrets and SMTP passwords in GitHub
+Actions secrets, not repository variables.
+
 The service principal referenced by the existing `AZUREAPPSERVICE_*` secrets
-must have `Contributor` or `Website Contributor` on resource group
-`MaklerApp_v2`. Its federated GitHub credential must match the repository,
-branch `main`, and workflow environment used by the action. The OIDC login
-continues to use the existing tenant and subscription secrets.
+must have `Contributor` on the subscription because the workflow runs a
+subscription-scoped Bicep deployment. Its federated GitHub credential must
+match the repository, branch `main`, and workflow environment used by the
+action. The OIDC login continues to use the existing tenant and subscription
+secrets. A resource-group-only `Contributor` or `Website Contributor` role is
+not sufficient for the infrastructure step.
 
 ## Important network limitation
 
