@@ -10,7 +10,7 @@ import urllib.request
 import os
 from html import unescape
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, unquote, urljoin, urlparse
 
 LOGGER = logging.getLogger(__name__)
 
@@ -58,12 +58,25 @@ def blob_request_headers():
 
     identity_endpoint = os.environ.get('IDENTITY_ENDPOINT')
     identity_header = os.environ.get('IDENTITY_HEADER')
-    if identity_endpoint and identity_header:
-        token_url = (
-            f'{identity_endpoint}?api-version=2019-08-01'
-            '&resource=https%3A%2F%2Fstorage.azure.com%2F'
-        )
+    if identity_endpoint or identity_header:
+        if not identity_endpoint or not identity_header:
+            raise RuntimeError(
+                'App Service Managed Identity is incompletely configured: '
+                'IDENTITY_ENDPOINT and IDENTITY_HEADER are both required.'
+            )
+        parsed_endpoint = urlparse(identity_endpoint)
+        query = dict(parse_qsl(parsed_endpoint.query))
+        query.update({
+            'api-version': '2019-08-01',
+            'resource': 'https://storage.azure.com/',
+        })
+        token_url = parsed_endpoint._replace(query=urlencode(query)).geturl()
         token_headers = {'X-IDENTITY-HEADER': identity_header}
+    elif os.environ.get('WEBSITE_SITE_NAME'):
+        raise RuntimeError(
+            'App Service Managed Identity endpoint is unavailable. '
+            'Enable the system-assigned identity and restart the App Service.'
+        )
     else:
         token_url = (
             'http://169.254.169.254/metadata/identity/oauth2/token'
@@ -5590,6 +5603,18 @@ class Handler(BaseHTTPRequestHandler):
             renderListings(list);
         }
 
+        async function readJsonResponse(res) {
+            const text = await res.text();
+            if (!text.trim()) {
+                throw new Error(`Serverantwort ist leer (HTTP ${res.status}).`);
+            }
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                throw new Error(`Serverantwort ist kein gültiges JSON (HTTP ${res.status}).`);
+            }
+        }
+
         function renderTabs(data) {
             const keys = filterBrokerKeys(data);
             if (!keys.length) {
@@ -5630,7 +5655,10 @@ class Handler(BaseHTTPRequestHandler):
             setLoading();
             try {
                 const res = await fetch('/api/listings');
-                const data = await res.json();
+                const data = await readJsonResponse(res);
+                if (!res.ok) {
+                    throw new Error(data.error || `Laden fehlgeschlagen (HTTP ${res.status}).`);
+                }
                 cachedData = data;
                 cacheTimestamp = now;
                 renderTabs(cachedData);
@@ -5647,7 +5675,7 @@ class Handler(BaseHTTPRequestHandler):
             setLoading();
             try {
                 const res = await fetch(endpoint, { method: 'POST' });
-                const result = await res.json();
+                const result = await readJsonResponse(res);
                 if (!res.ok || !result.ok) {
                     throw new Error(result.error || 'Aktualisierung fehlgeschlagen');
                 }
