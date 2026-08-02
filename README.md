@@ -22,6 +22,18 @@ http://127.0.0.1:8000/
 
 On Azure App Service, open `https://maklerapp.azurewebsites.net/`.
 
+## Azure Blob Storage
+
+The app persists the latest listings in `latest.json` in the `maklerapp`
+container of `maklerappstorageaccount`. The App Service must have a system-
+assigned managed identity with the `Storage Blob Data Contributor` role on
+that storage account. The app reads a fresh blob for up to three hours and
+refreshes it from the broker sites when it expires.
+
+For local runs, set `AZURE_STORAGE_SAS_TOKEN` or provide an Azure managed
+identity. The container URL can be overridden with
+`LISTINGS_BLOB_CONTAINER_URL`.
+
 ## Notes
 
 - The project uses only the Python standard library.

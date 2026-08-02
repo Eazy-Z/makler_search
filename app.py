@@ -16,7 +16,14 @@ TARGET_URL = 'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm'
 LISTINGS_CACHE = None
 LISTINGS_CACHE_TIME = 0
 CACHE_TTL_SECONDS = 5 * 60
+LISTINGS_REFRESH_SECONDS = 3 * 60 * 60
 LISTINGS_FETCH_TIMEOUT_SECONDS = 120
+LISTINGS_BLOB_CONTAINER_URL = os.environ.get(
+    'LISTINGS_BLOB_CONTAINER_URL',
+    'https://maklerappstorageaccount.blob.core.windows.net/maklerapp',
+)
+LISTINGS_BLOB_NAME = os.environ.get('LISTINGS_BLOB_NAME', 'latest.json')
+AZURE_STORAGE_SAS_TOKEN = os.environ.get('AZURE_STORAGE_SAS_TOKEN', '')
 SCHLOSS_URL = 'https://schlossberger-immobilien.de/immobilien-angebote/?inx-sort=availability_desc'
 ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
 FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
@@ -27,6 +34,64 @@ BLOCKED_BROKER_REASONS = {
     'neuesnest': 'Blocked',
     'bunzco': 'Blocked',
 }
+
+
+def listings_blob_url():
+    container_url = LISTINGS_BLOB_CONTAINER_URL.rstrip('/')
+    sas_suffix = AZURE_STORAGE_SAS_TOKEN
+    if sas_suffix and not sas_suffix.startswith('?'):
+        sas_suffix = '?' + sas_suffix
+    return f'{container_url}/{LISTINGS_BLOB_NAME}{sas_suffix}'
+
+
+def blob_request_headers():
+    if AZURE_STORAGE_SAS_TOKEN:
+        return {'x-ms-version': '2021-12-02'}
+
+    token_url = (
+        'http://169.254.169.254/metadata/identity/oauth2/token'
+        '?api-version=2019-08-01&resource=https%3A%2F%2Fstorage.azure.com%2F'
+    )
+    token_request = urllib.request.Request(token_url, headers={'Metadata': 'true'})
+    with urllib.request.urlopen(token_request, timeout=10) as response:
+        token = json.loads(response.read().decode('utf-8'))['access_token']
+    return {
+        'Authorization': f'Bearer {token}',
+        'x-ms-version': '2021-12-02',
+    }
+
+
+def read_listings_blob():
+    request = urllib.request.Request(listings_blob_url(), headers=blob_request_headers())
+    with urllib.request.urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+    generated_at = payload.get('generated_at', 0)
+    if isinstance(generated_at, str):
+        generated_at = 0
+    if time.time() - generated_at >= LISTINGS_REFRESH_SECONDS:
+        return None
+    return payload.get('listings')
+
+
+def write_listings_blob(listings):
+    payload = json.dumps({
+        'generated_at': time.time(),
+        'listings': listings,
+    }).encode('utf-8')
+    headers = blob_request_headers()
+    headers.update({
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': str(len(payload)),
+        'x-ms-blob-type': 'BlockBlob',
+    })
+    request = urllib.request.Request(
+        listings_blob_url(),
+        data=payload,
+        headers=headers,
+        method='PUT',
+    )
+    with urllib.request.urlopen(request, timeout=20):
+        return
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -5299,11 +5364,21 @@ def fetch_broker_rows_with_retry(key: str, fetcher):
     return []
 
 
-def fetch_listings():
+def fetch_listings(force_refresh=False):
     global LISTINGS_CACHE, LISTINGS_CACHE_TIME
     now = time.time()
-    if LISTINGS_CACHE is not None and now - LISTINGS_CACHE_TIME < CACHE_TTL_SECONDS:
+    if not force_refresh and LISTINGS_CACHE is not None and now - LISTINGS_CACHE_TIME < CACHE_TTL_SECONDS:
         return LISTINGS_CACHE
+
+    if not force_refresh:
+        try:
+            persisted_listings = read_listings_blob()
+        except Exception:
+            persisted_listings = None
+        if persisted_listings is not None:
+            LISTINGS_CACHE = persisted_listings
+            LISTINGS_CACHE_TIME = now
+            return LISTINGS_CACHE
 
     listings = {}
     max_workers = min(8, len(BROKER_SOURCES)) or 1
@@ -5334,7 +5409,25 @@ def fetch_listings():
 
     LISTINGS_CACHE = listings
     LISTINGS_CACHE_TIME = now
+    if any(listings.values()):
+        try:
+            write_listings_blob(listings)
+        except Exception:
+            pass
     return LISTINGS_CACHE
+
+
+def refresh_broker_listings(broker_key):
+    source_fetcher = dict(BROKER_SOURCES).get(broker_key)
+    if source_fetcher is None:
+        raise ValueError('Unknown broker')
+
+    listings = fetch_listings()
+    listings[broker_key] = fetch_broker_rows_with_retry(broker_key, source_fetcher)
+    global LISTINGS_CACHE_TIME
+    LISTINGS_CACHE_TIME = time.time()
+    write_listings_blob(listings)
+    return listings
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -5366,6 +5459,9 @@ class Handler(BaseHTTPRequestHandler):
         .search { width: 100%; border: 1px solid #cbd5e1; border-radius: 999px; padding: 12px 16px; font-size: 15px; background: white; box-sizing: border-box; }
         .tabs { display: flex; gap: 10px; margin-bottom: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
         .tab { border: 0; padding: 10px 16px; border-radius: 999px; background: #e2e8f0; cursor: pointer; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
+        .refresh-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .refresh-button { border: 1px solid #94a3b8; border-radius: 8px; padding: 10px 14px; background: white; color: #0f172a; cursor: pointer; font-weight: 600; }
+        .refresh-button:disabled { cursor: wait; opacity: 0.6; }
     .tab.active { background: #0f172a; color: white; }
     .loading { display: inline-flex; align-items: center; gap: 8px; color: #64748b; font-weight: 600; }
     .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #0f172a; border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -5380,6 +5476,10 @@ class Handler(BaseHTTPRequestHandler):
         <div class="toolbar">
             <input id="broker-search" class="search" type="search" placeholder="Makler filtern">
             <input id="listing-search" class="search" type="search" placeholder="Ort, Titel, Preis oder Wohnfläche filtern">
+            <div class="refresh-actions">
+                <button id="refresh-broker" class="refresh-button" type="button">Makler aktualisieren</button>
+                <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
+            </div>
             <div id="tabs" class="tabs"></div>
         </div>
         <div id="listings" class="loading">
@@ -5393,6 +5493,8 @@ class Handler(BaseHTTPRequestHandler):
         const tabsRoot = document.getElementById('tabs');
         const brokerSearchInput = document.getElementById('broker-search');
         const listingSearchInput = document.getElementById('listing-search');
+        const refreshBrokerButton = document.getElementById('refresh-broker');
+        const refreshAllButton = document.getElementById('refresh-all');
         const root = document.getElementById('listings');
         let activeTab = 'bader';
         let cachedData = null;
@@ -5514,6 +5616,29 @@ class Handler(BaseHTTPRequestHandler):
             }
         }
 
+        async function refreshListings(endpoint) {
+            refreshBrokerButton.disabled = true;
+            refreshAllButton.disabled = true;
+            setLoading();
+            try {
+                const res = await fetch(endpoint, { method: 'POST' });
+                const result = await res.json();
+                if (!res.ok || !result.ok) {
+                    throw new Error(result.error || 'Aktualisierung fehlgeschlagen');
+                }
+                cachedData = result.listings;
+                cacheTimestamp = Date.now();
+                renderTabs(cachedData);
+                renderActiveListings();
+            } catch (err) {
+                root.className = '';
+                root.innerHTML = `<p>${err.message}</p>`;
+            } finally {
+                refreshBrokerButton.disabled = false;
+                refreshAllButton.disabled = false;
+            }
+        }
+
         brokerSearchInput.addEventListener('input', event => {
             brokerQuery = event.target.value || '';
             renderTabs(cachedData || {});
@@ -5523,6 +5648,14 @@ class Handler(BaseHTTPRequestHandler):
         listingSearchInput.addEventListener('input', event => {
             listingQuery = event.target.value || '';
             renderActiveListings();
+        });
+
+        refreshBrokerButton.addEventListener('click', () => {
+            refreshListings(`/api/listings/refresh?broker=${encodeURIComponent(activeTab)}`);
+        });
+
+        refreshAllButton.addEventListener('click', () => {
+            refreshListings('/api/listings/refresh-all');
         });
 
         loadListings(true);
@@ -5537,6 +5670,29 @@ class Handler(BaseHTTPRequestHandler):
         ).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        if self.path == '/api/listings/refresh-all':
+            listings = fetch_listings(force_refresh=True)
+            body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
+            self.send_response(200)
+        elif self.path.startswith('/api/listings/refresh?broker='):
+            broker_key = unquote(self.path.split('=', 1)[1])
+            try:
+                listings = refresh_broker_listings(broker_key)
+                body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
+                self.send_response(200)
+            except Exception as error:
+                body = json.dumps({'ok': False, 'error': str(error)}).encode('utf-8')
+                self.send_response(400)
+        else:
+            body = json.dumps({'ok': False, 'error': 'Unknown endpoint'}).encode('utf-8')
+            self.send_response(404)
+
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
