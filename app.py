@@ -5,8 +5,10 @@ import time
 import gzip
 import zlib
 import logging
+from email.utils import formatdate
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import urllib.request
+from urllib.error import HTTPError
 import os
 from html import unescape
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -89,6 +91,7 @@ def blob_request_headers():
     return {
         'Authorization': f'Bearer {token}',
         'x-ms-version': '2021-12-02',
+        'x-ms-date': formatdate(usegmt=True),
     }
 
 
@@ -127,6 +130,22 @@ def write_listings_blob(listings):
     )
     with urllib.request.urlopen(request, timeout=20):
         return
+
+
+def format_blob_error(error):
+    if not isinstance(error, HTTPError):
+        return str(error)
+    try:
+        response_body = error.read().decode('utf-8', errors='replace').strip()
+    except Exception:
+        response_body = ''
+    error_code = error.headers.get('x-ms-error-code', '')
+    details = f'Azure Blob HTTP {error.code}'
+    if error_code:
+        details += f' ({error_code})'
+    if response_body:
+        details += f': {response_body[:1000]}'
+    return details
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -5409,7 +5428,11 @@ def fetch_listings(force_refresh=False):
         try:
             persisted_listings = read_listings_blob()
         except Exception as error:
-            LOGGER.warning('Could not read listings blob %s: %s', listings_blob_url(), error)
+            LOGGER.warning(
+                'Could not read listings blob %s: %s',
+                listings_blob_url(),
+                format_blob_error(error),
+            )
             persisted_listings = None
         if persisted_listings is not None:
             LISTINGS_CACHE = persisted_listings
@@ -5449,7 +5472,11 @@ def fetch_listings(force_refresh=False):
         try:
             write_listings_blob(listings)
         except Exception as error:
-            LOGGER.exception('Could not write listings blob %s: %s', listings_blob_url(), error)
+            LOGGER.exception(
+                'Could not write listings blob %s: %s',
+                listings_blob_url(),
+                format_blob_error(error),
+            )
             if force_refresh:
                 raise
     return LISTINGS_CACHE
@@ -5735,7 +5762,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
             except Exception as error:
                 LOGGER.exception('Global listings refresh failed: %s', error)
-                body = json.dumps({'ok': False, 'error': str(error)}).encode('utf-8')
+                body = json.dumps({'ok': False, 'error': format_blob_error(error)}).encode('utf-8')
                 self.send_response(502)
         elif self.path.startswith('/api/listings/refresh?broker='):
             broker_key = unquote(self.path.split('=', 1)[1])
@@ -5744,7 +5771,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
                 self.send_response(200)
             except Exception as error:
-                body = json.dumps({'ok': False, 'error': str(error)}).encode('utf-8')
+                body = json.dumps({'ok': False, 'error': format_blob_error(error)}).encode('utf-8')
                 self.send_response(400)
         else:
             body = json.dumps({'ok': False, 'error': 'Unknown endpoint'}).encode('utf-8')
