@@ -114,7 +114,7 @@ jobs:
               'emailRecipients': os.environ['AZURE_EMAIL_RECIPIENTS'],
           }
           parameters = {'parameters': {key: {'value': value} for key, value in values.items()}}
-            with open(os.path.join(os.environ['RUNNER_TEMP'], 'maklerapp.parameters.json'), 'w', encoding='utf-8') as stream:
+          with open(os.path.join(os.environ['RUNNER_TEMP'], 'maklerapp.parameters.json'), 'w', encoding='utf-8') as stream:
               json.dump(parameters, stream)
           PY
 
