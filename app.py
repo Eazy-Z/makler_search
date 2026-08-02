@@ -4,12 +4,15 @@ import re
 import time
 import gzip
 import zlib
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import urllib.request
 import os
 from html import unescape
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote, urljoin, urlparse
+
+LOGGER = logging.getLogger(__name__)
 
 TARGET_URL = 'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm'
 
@@ -24,6 +27,11 @@ LISTINGS_BLOB_CONTAINER_URL = os.environ.get(
 )
 LISTINGS_BLOB_NAME = os.environ.get('LISTINGS_BLOB_NAME', 'latest.json')
 AZURE_STORAGE_SAS_TOKEN = os.environ.get('AZURE_STORAGE_SAS_TOKEN', '')
+LISTINGS_BLOB_ENABLED = (
+    bool(os.environ.get('WEBSITE_SITE_NAME'))
+    or bool(AZURE_STORAGE_SAS_TOKEN)
+    or os.environ.get('LISTINGS_BLOB_ENABLED', '').lower() == 'true'
+)
 SCHLOSS_URL = 'https://schlossberger-immobilien.de/immobilien-angebote/?inx-sort=availability_desc'
 ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
 FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
@@ -62,6 +70,8 @@ def blob_request_headers():
 
 
 def read_listings_blob():
+    if not LISTINGS_BLOB_ENABLED:
+        return None
     request = urllib.request.Request(listings_blob_url(), headers=blob_request_headers())
     with urllib.request.urlopen(request, timeout=20) as response:
         payload = json.loads(response.read().decode('utf-8'))
@@ -74,6 +84,8 @@ def read_listings_blob():
 
 
 def write_listings_blob(listings):
+    if not LISTINGS_BLOB_ENABLED:
+        return
     payload = json.dumps({
         'generated_at': time.time(),
         'listings': listings,
@@ -5373,7 +5385,8 @@ def fetch_listings(force_refresh=False):
     if not force_refresh:
         try:
             persisted_listings = read_listings_blob()
-        except Exception:
+        except Exception as error:
+            LOGGER.warning('Could not read listings blob %s: %s', listings_blob_url(), error)
             persisted_listings = None
         if persisted_listings is not None:
             LISTINGS_CACHE = persisted_listings
@@ -5412,8 +5425,8 @@ def fetch_listings(force_refresh=False):
     if any(listings.values()):
         try:
             write_listings_blob(listings)
-        except Exception:
-            pass
+        except Exception as error:
+            LOGGER.exception('Could not write listings blob %s: %s', listings_blob_url(), error)
     return LISTINGS_CACHE
 
 
