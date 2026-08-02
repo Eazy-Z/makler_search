@@ -68,7 +68,6 @@ jobs:
       AZURE_SMTP_USERNAME: ${{ vars.AZURE_SMTP_USERNAME || '' }}
       AZURE_EMAIL_FROM: ${{ vars.AZURE_EMAIL_FROM || '' }}
       AZURE_EMAIL_RECIPIENTS: ${{ vars.AZURE_EMAIL_RECIPIENTS || '' }}
-      DEPLOYMENT_PARAMETERS_FILE: ${{ runner.temp }}/maklerapp.parameters.json
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
@@ -115,7 +114,7 @@ jobs:
               'emailRecipients': os.environ['AZURE_EMAIL_RECIPIENTS'],
           }
           parameters = {'parameters': {key: {'value': value} for key, value in values.items()}}
-          with open(os.environ['DEPLOYMENT_PARAMETERS_FILE'], 'w', encoding='utf-8') as stream:
+            with open(os.path.join(os.environ['RUNNER_TEMP'], 'maklerapp.parameters.json'), 'w', encoding='utf-8') as stream:
               json.dump(parameters, stream)
           PY
 
@@ -125,11 +124,11 @@ jobs:
             --name "maklerapp-${{ github.run_number }}" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
-            --parameters "@$DEPLOYMENT_PARAMETERS_FILE"
+            --parameters "@$RUNNER_TEMP/maklerapp.parameters.json"
 
       - name: Remove temporary deployment parameters
         if: ${{ always() }}
-        run: rm -f "$DEPLOYMENT_PARAMETERS_FILE"
+        run: rm -f "$RUNNER_TEMP/maklerapp.parameters.json"
 
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@657f0700ea5214d56a0400d8ac5e8023c963d25d # v3.0.6
