@@ -9,7 +9,6 @@ param listingsStorageAccountName string
 param functionStorageAccountName string
 param webAppName string
 param functionAppName string
-param githubActionsPrincipalId string
 param monthlyBudgetAmount int
 param budgetAlertEmail string
 param backendRefreshUrl string
@@ -196,18 +195,6 @@ resource webAppBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-    )
-  }
-}
-
-resource githubActionsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(githubActionsPrincipalId)) {
-  name: guid(resourceGroup().id, githubActionsPrincipalId, 'Contributor')
-  properties: {
-    principalId: githubActionsPrincipalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      'b24988ac-6180-42a0-ab88-20f7382dd24c'
     )
   }
 }

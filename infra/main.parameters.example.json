@@ -26,9 +26,6 @@
     "functionAppName": {
       "value": "<globally-unique-function-app-name>"
     },
-    "githubActionsPrincipalId": {
-      "value": "<github-actions-service-principal-object-id>"
-    },
     "monthlyBudgetAmount": {
       "value": 5
     },
