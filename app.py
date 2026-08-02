@@ -5565,11 +5565,15 @@ class Handler(BaseHTTPRequestHandler):
     .meta { color: #4b5563; font-size: 14px; }
         .toolbar { display: grid; gap: 12px; margin-bottom: 16px; }
         .search { width: 100%; border: 1px solid #cbd5e1; border-radius: 999px; padding: 12px 16px; font-size: 15px; background: white; box-sizing: border-box; }
+        .numeric-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+        .numeric-filter { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; background: white; box-sizing: border-box; }
         .tabs { display: flex; gap: 10px; margin-bottom: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
         .tab { border: 0; padding: 10px 16px; border-radius: 999px; background: #e2e8f0; cursor: pointer; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
         .refresh-actions { display: flex; gap: 10px; flex-wrap: wrap; }
         .refresh-button { border: 1px solid #94a3b8; border-radius: 8px; padding: 10px 14px; background: white; color: #0f172a; cursor: pointer; font-weight: 600; }
         .refresh-button:disabled { cursor: wait; opacity: 0.6; }
+        .result-summary { color: #64748b; font-size: 14px; margin: 0 0 12px; }
+        @media (max-width: 700px) { .numeric-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .tab.active { background: #0f172a; color: white; }
     .loading { display: inline-flex; align-items: center; gap: 8px; color: #64748b; font-weight: 600; }
     .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #0f172a; border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -5584,6 +5588,12 @@ class Handler(BaseHTTPRequestHandler):
         <div class="toolbar">
             <input id="broker-search" class="search" type="search" placeholder="Makler filtern">
             <input id="listing-search" class="search" type="search" placeholder="Ort, Titel, Preis oder Wohnfläche filtern">
+            <div class="numeric-filters">
+                <input id="min-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis von (€)">
+                <input id="max-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis bis (€)">
+                <input id="min-area" class="numeric-filter" type="number" min="0" step="1" placeholder="Wohnfläche von (m²)">
+                <input id="max-area" class="numeric-filter" type="number" min="0" step="1" placeholder="Wohnfläche bis (m²)">
+            </div>
             <div class="refresh-actions">
                 <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
             </div>
@@ -5600,14 +5610,54 @@ class Handler(BaseHTTPRequestHandler):
         const tabsRoot = document.getElementById('tabs');
         const brokerSearchInput = document.getElementById('broker-search');
         const listingSearchInput = document.getElementById('listing-search');
+        const minPriceInput = document.getElementById('min-price');
+        const maxPriceInput = document.getElementById('max-price');
+        const minAreaInput = document.getElementById('min-area');
+        const maxAreaInput = document.getElementById('max-area');
         const refreshAllButton = document.getElementById('refresh-all');
         const root = document.getElementById('listings');
-        let activeTab = 'bader';
+        const allListingsTab = '__all__';
+        let activeTab = allListingsTab;
         let cachedData = null;
         let cacheTimestamp = 0;
         const cacheTtlMs = 5 * 60 * 1000;
         let brokerQuery = '';
         let listingQuery = '';
+
+        function parsePriceValue(value) {
+            const text = String(value || '').replace(/[^0-9,.-]/g, '');
+            if (!text) {
+                return null;
+            }
+            const normalized = text.includes(',')
+                ? text.replace(/\\./g, '').replace(',', '.')
+                : text.replace(/\\./g, '');
+            const number = Number.parseFloat(normalized);
+            return Number.isFinite(number) ? number : null;
+        }
+
+        function parseAreaValue(value) {
+            const text = String(value || '').replace(/[^0-9,.-]/g, '');
+            if (!text) {
+                return null;
+            }
+            const normalized = text.includes(',')
+                ? text.replace(/\\./g, '').replace(',', '.')
+                : text;
+            const number = Number.parseFloat(normalized);
+            return Number.isFinite(number) ? number : null;
+        }
+
+        function readFilterValue(input) {
+            const value = Number.parseFloat(input.value);
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function flattenListings(data) {
+            return Object.entries(data).flatMap(([brokerKey, listings]) =>
+                (listings || []).map(item => ({ ...item, brokerKey }))
+            );
+        }
 
         function setLoading() {
             root.className = 'loading';
@@ -5635,12 +5685,30 @@ class Handler(BaseHTTPRequestHandler):
 
         function filterListings(listings) {
             const query = listingQuery.trim().toLowerCase();
-            if (!query) {
-                return listings;
-            }
+            const minPrice = readFilterValue(minPriceInput);
+            const maxPrice = readFilterValue(maxPriceInput);
+            const minArea = readFilterValue(minAreaInput);
+            const maxArea = readFilterValue(maxAreaInput);
             return listings.filter(item => {
                 const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
-                return haystack.includes(query);
+                if (query && !haystack.includes(query)) {
+                    return false;
+                }
+                const price = parsePriceValue(item.price);
+                const area = parseAreaValue(item.area_sqm);
+                if (minPrice !== null && (price === null || price < minPrice)) {
+                    return false;
+                }
+                if (maxPrice !== null && (price === null || price > maxPrice)) {
+                    return false;
+                }
+                if (minArea !== null && (area === null || area < minArea)) {
+                    return false;
+                }
+                if (maxArea !== null && (area === null || area > maxArea)) {
+                    return false;
+                }
+                return true;
             });
         }
 
@@ -5652,6 +5720,10 @@ class Handler(BaseHTTPRequestHandler):
             }
             root.className = '';
             root.replaceChildren();
+            const summary = document.createElement('p');
+            summary.className = 'result-summary';
+            summary.textContent = `${listings.length} Angebote`;
+            root.append(summary);
             listings.forEach(item => {
                 const card = document.createElement('article');
                 card.className = 'card';
@@ -5672,6 +5744,12 @@ class Handler(BaseHTTPRequestHandler):
                 location.className = 'meta';
                 location.textContent = `Ort: ${item.location || 'nicht verfügbar'}`;
 
+                const broker = document.createElement('div');
+                broker.className = 'meta';
+                if (item.brokerKey) {
+                    broker.textContent = `Makler: ${formatLabel(item.brokerKey)}`;
+                }
+
                 const linkRow = document.createElement('div');
                 linkRow.className = 'meta';
                 const link = document.createElement('a');
@@ -5687,7 +5765,7 @@ class Handler(BaseHTTPRequestHandler):
                 } catch (error) {
                 }
 
-                card.append(title, price, area, location, linkRow);
+                card.append(title, price, area, location, broker, linkRow);
                 root.append(card);
             });
         }
@@ -5707,7 +5785,11 @@ class Handler(BaseHTTPRequestHandler):
                 root.append(status);
                 return;
             }
-            const list = filterListings(cachedData[activeTab] || []);
+            const sourceListings = activeTab === allListingsTab
+                ? flattenListings(cachedData)
+                : (cachedData[activeTab] || []);
+            const list = filterListings(sourceListings);
+            root.dataset.resultCount = String(list.length);
             renderListings(list);
         }
 
@@ -5725,16 +5807,27 @@ class Handler(BaseHTTPRequestHandler):
 
         function renderTabs(data) {
             const keys = filterBrokerKeys(data);
-            if (!keys.length) {
+            if (!keys.length && activeTab !== allListingsTab) {
                 tabsRoot.textContent = 'Keine Makler gefunden.';
                 return;
             }
 
-            if (!keys.includes(activeTab)) {
+            if (activeTab !== allListingsTab && !keys.includes(activeTab)) {
                 activeTab = keys[0];
             }
 
             tabsRoot.replaceChildren();
+            const allButton = document.createElement('button');
+            allButton.className = `tab${activeTab === allListingsTab ? ' active' : ''}`;
+            allButton.dataset.tab = allListingsTab;
+            allButton.textContent = `Alle Angebote (${flattenListings(data).length})`;
+            allButton.addEventListener('click', () => {
+                tabsRoot.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+                allButton.classList.add('active');
+                activeTab = allListingsTab;
+                renderActiveListings();
+            });
+            tabsRoot.append(allButton);
             keys.forEach(key => {
                 const count = (data[key] || []).length;
                 const button = document.createElement('button');
@@ -5808,6 +5901,10 @@ class Handler(BaseHTTPRequestHandler):
         listingSearchInput.addEventListener('input', event => {
             listingQuery = event.target.value || '';
             renderActiveListings();
+        });
+
+        [minPriceInput, maxPriceInput, minAreaInput, maxAreaInput].forEach(input => {
+            input.addEventListener('input', () => renderActiveListings());
         });
 
         refreshAllButton.addEventListener('click', () => {
