@@ -5482,19 +5482,6 @@ def fetch_listings(force_refresh=False):
     return LISTINGS_CACHE
 
 
-def refresh_broker_listings(broker_key):
-    source_fetcher = dict(BROKER_SOURCES).get(broker_key)
-    if source_fetcher is None:
-        raise ValueError('Unknown broker')
-
-    listings = fetch_listings()
-    listings[broker_key] = fetch_broker_rows_with_retry(broker_key, source_fetcher)
-    global LISTINGS_CACHE_TIME
-    LISTINGS_CACHE_TIME = time.time()
-    write_listings_blob(listings)
-    return listings
-
-
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/api/listings'):
@@ -5542,7 +5529,6 @@ class Handler(BaseHTTPRequestHandler):
             <input id="broker-search" class="search" type="search" placeholder="Makler filtern">
             <input id="listing-search" class="search" type="search" placeholder="Ort, Titel, Preis oder Wohnfläche filtern">
             <div class="refresh-actions">
-                <button id="refresh-broker" class="refresh-button" type="button">Makler aktualisieren</button>
                 <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
             </div>
             <div id="tabs" class="tabs"></div>
@@ -5558,7 +5544,6 @@ class Handler(BaseHTTPRequestHandler):
         const tabsRoot = document.getElementById('tabs');
         const brokerSearchInput = document.getElementById('broker-search');
         const listingSearchInput = document.getElementById('listing-search');
-        const refreshBrokerButton = document.getElementById('refresh-broker');
         const refreshAllButton = document.getElementById('refresh-all');
         const root = document.getElementById('listings');
         let activeTab = 'bader';
@@ -5697,7 +5682,6 @@ class Handler(BaseHTTPRequestHandler):
         }
 
         async function refreshListings(endpoint) {
-            refreshBrokerButton.disabled = true;
             refreshAllButton.disabled = true;
             setLoading();
             try {
@@ -5714,7 +5698,6 @@ class Handler(BaseHTTPRequestHandler):
                 root.className = '';
                 root.innerHTML = `<p>${err.message}</p>`;
             } finally {
-                refreshBrokerButton.disabled = false;
                 refreshAllButton.disabled = false;
             }
         }
@@ -5728,10 +5711,6 @@ class Handler(BaseHTTPRequestHandler):
         listingSearchInput.addEventListener('input', event => {
             listingQuery = event.target.value || '';
             renderActiveListings();
-        });
-
-        refreshBrokerButton.addEventListener('click', () => {
-            refreshListings(`/api/listings/refresh?broker=${encodeURIComponent(activeTab)}`);
         });
 
         refreshAllButton.addEventListener('click', () => {
@@ -5764,15 +5743,6 @@ class Handler(BaseHTTPRequestHandler):
                 LOGGER.exception('Global listings refresh failed: %s', error)
                 body = json.dumps({'ok': False, 'error': format_blob_error(error)}).encode('utf-8')
                 self.send_response(502)
-        elif self.path.startswith('/api/listings/refresh?broker='):
-            broker_key = unquote(self.path.split('=', 1)[1])
-            try:
-                listings = refresh_broker_listings(broker_key)
-                body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
-                self.send_response(200)
-            except Exception as error:
-                body = json.dumps({'ok': False, 'error': format_blob_error(error)}).encode('utf-8')
-                self.send_response(400)
         else:
             body = json.dumps({'ok': False, 'error': 'Unknown endpoint'}).encode('utf-8')
             self.send_response(404)

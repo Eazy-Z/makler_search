@@ -30,6 +30,13 @@ assigned managed identity with the `Storage Blob Data Contributor` role on
 that storage account. The app reads a fresh blob for up to three hours and
 refreshes it from the broker sites when it expires.
 
+The storage account must also allow the App Service to reach its public Blob
+endpoint. In Storage account -> Networking, set `Public network access` to
+`Enabled from all networks`, or add the App Service outbound IP addresses to
+the allowed networks. A `403 (AuthorizationFailure)` without
+`AuthorizationPermissionMismatch` usually means that the Storage firewall is
+blocking the request rather than that the managed identity role is missing.
+
 For local runs, set `AZURE_STORAGE_SAS_TOKEN` or provide an Azure managed
 identity. The container URL can be overridden with
 `LISTINGS_BLOB_CONTAINER_URL`.

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "westus3"
+    },
+    "resourceGroupName": {
+      "value": "MaklerApp_v2"
+    },
+    "tenantId": {
+      "value": "6bb6fc0a-c0e2-425e-813d-0ae4d8235cd9"
+    },
+    "entraClientId": {
+      "value": "<existing-app-registration-client-id>"
+    },
+    "entraClientSecret": {
+      "value": "<provide-at-deployment-time>"
+    },
+    "listingsStorageAccountName": {
+      "value": "<globally-unique-lowercase-name>"
+    },
+    "functionStorageAccountName": {
+      "value": "<globally-unique-lowercase-name>"
+    },
+    "webAppName": {
+      "value": "<globally-unique-web-app-name>"
+    },
+    "functionAppName": {
+      "value": "<globally-unique-function-app-name>"
+    },
+    "backendRefreshUrl": {
+      "value": "https://<web-app-name>.azurewebsites.net/internal/refresh"
+    },
+    "emailSmtpHost": {
+      "value": ""
+    },
+    "emailSmtpPort": {
+      "value": "587"
+    },
+    "emailSmtpUsername": {
+      "value": ""
+    },
+    "emailSmtpPassword": {
+      "value": "<provide-at-deployment-time>"
+    },
+    "emailFromAddress": {
+      "value": ""
+    },
+    "emailRecipients": {
+      "value": "person1@example.com,person2@example.com,person3@example.com,person4@example.com,person5@example.com"
+    }
+  }
+}
