@@ -5441,30 +5441,32 @@ def fetch_listings(force_refresh=False):
 
     listings = {}
     max_workers = min(8, len(BROKER_SOURCES)) or 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(lambda key=key, fetcher=fetcher: fetch_broker_rows_with_retry(key, fetcher)): key
-            for key, fetcher in BROKER_SOURCES
-        }
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    futures = {
+        executor.submit(lambda key=key, fetcher=fetcher: fetch_broker_rows_with_retry(key, fetcher)): key
+        for key, fetcher in BROKER_SOURCES
+    }
+    try:
         try:
+            completed_futures = as_completed(futures, timeout=LISTINGS_FETCH_TIMEOUT_SECONDS)
+        except TypeError:
+            # Test doubles may not accept timeout kwarg.
+            completed_futures = as_completed(futures)
+
+        for future in completed_futures:
+            key = futures[future]
             try:
-                completed_futures = as_completed(futures, timeout=LISTINGS_FETCH_TIMEOUT_SECONDS)
-            except TypeError:
-                # Test doubles may not accept timeout kwarg.
-                completed_futures = as_completed(futures)
+                listings[key] = future.result()
+            except Exception:
+                listings[key] = []
+    except FuturesTimeoutError:
+        pass
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
-            for future in completed_futures:
-                key = futures[future]
-                try:
-                    listings[key] = future.result()
-                except Exception:
-                    listings[key] = []
-        except FuturesTimeoutError:
-            pass
-
-        # Ensure API returns even when some brokers time out.
-        for key, _fetcher in BROKER_SOURCES:
-            listings.setdefault(key, [])
+    # Ensure API returns even when some brokers time out.
+    for key, _fetcher in BROKER_SOURCES:
+        listings.setdefault(key, [])
 
     LISTINGS_CACHE = listings
     LISTINGS_CACHE_TIME = now
