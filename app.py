@@ -5427,6 +5427,8 @@ def fetch_listings(force_refresh=False):
             write_listings_blob(listings)
         except Exception as error:
             LOGGER.exception('Could not write listings blob %s: %s', listings_blob_url(), error)
+            if force_refresh:
+                raise
     return LISTINGS_CACHE
 
 
@@ -5689,9 +5691,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == '/api/listings/refresh-all':
-            listings = fetch_listings(force_refresh=True)
-            body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
-            self.send_response(200)
+            try:
+                listings = fetch_listings(force_refresh=True)
+                body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
+                self.send_response(200)
+            except Exception as error:
+                LOGGER.exception('Global listings refresh failed: %s', error)
+                body = json.dumps({'ok': False, 'error': str(error)}).encode('utf-8')
+                self.send_response(502)
         elif self.path.startswith('/api/listings/refresh?broker='):
             broker_key = unquote(self.path.split('=', 1)[1])
             try:
