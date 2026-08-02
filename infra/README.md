@@ -58,8 +58,8 @@ Use deployment-time secure parameters or Key Vault references for production.
 
 The workflow in `.github/workflows/main_maklerapp.yml` validates the Bicep
 template, deploys the Bicep infrastructure, and then deploys the Python app to
-`maklerapp-v2` by default. The infrastructure deployment uses incremental mode
-so resources not managed by this template are not deleted. Configure these
+`maklerapp-v2` by default. The Azure CLI uses its default incremental mode, so
+resources not managed by this template are not deleted. Configure these
 optional repository variables when the defaults differ:
 
 ```text
