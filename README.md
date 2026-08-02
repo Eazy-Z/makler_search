@@ -11,7 +11,7 @@ Local scraper and listing browser for multiple real-estate brokers.
 ## Run
 
 ```bash
-python3 app.py
+python3.14 app.py
 ```
 
 Open the app at:

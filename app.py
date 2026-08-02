@@ -5406,7 +5406,7 @@ class Handler(BaseHTTPRequestHandler):
         }
 
         function formatLabel(key) {
-            return brokerLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+            return brokerLabels[key] || key.replace(/_/g, ' ').replace(/\\b\\w/g, char => char.toUpperCase());
         }
 
         function filterBrokerKeys(data) {
