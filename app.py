@@ -8,7 +8,7 @@ import logging
 from email.utils import formatdate
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import urllib.request
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 import os
 from html import unescape
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -95,11 +95,21 @@ def blob_request_headers():
     }
 
 
+def blob_urlopen(request, timeout=20):
+    for attempt in range(3):
+        try:
+            return urllib.request.urlopen(request, timeout=timeout)
+        except URLError:
+            if attempt == 2:
+                raise
+            time.sleep(1 << attempt)
+
+
 def read_listings_blob():
     if not LISTINGS_BLOB_ENABLED:
         return None
     request = urllib.request.Request(listings_blob_url(), headers=blob_request_headers())
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with blob_urlopen(request) as response:
         payload = json.loads(response.read().decode('utf-8'))
     generated_at = payload.get('generated_at', 0)
     if isinstance(generated_at, str):
@@ -128,7 +138,7 @@ def write_listings_blob(listings):
         headers=headers,
         method='PUT',
     )
-    with urllib.request.urlopen(request, timeout=20):
+    with blob_urlopen(request):
         return
 
 
