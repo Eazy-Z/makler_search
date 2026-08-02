@@ -117,6 +117,24 @@ creates a first-run chicken-and-egg problem. After these one-time bootstrap
 assignments, rerun the GitHub Action. The Bicep deployment can then create and
 maintain the Web App Blob access role.
 
+The optional `azure-cost-guard.yml` workflow checks month-to-date Cost
+Management data hourly and stops the Web App and Function App when
+`AZURE_MONTHLY_BUDGET_AMOUNT` is reached. Its OIDC principal additionally
+needs `Cost Management Reader` at subscription scope. GitHub Actions variables
+can override `AZURE_RESOURCE_GROUP`, `AZURE_WEBAPP_NAME`,
+`AZURE_FUNCTION_APP_NAME`, and `AZURE_MONTHLY_BUDGET_AMOUNT`. The workflow can
+be run manually with `dry_run` enabled to verify the threshold without stopping
+resources. Storage and Key Vault costs continue after the apps are stopped.
+Grant the cost permission once with:
+
+```bash
+az role assignment create \
+  --assignee-object-id 78e19b89-c199-4a0e-a127-5fa2a85f84b7 \
+  --assignee-principal-type ServicePrincipal \
+  --role "Cost Management Reader" \
+  --scope /subscriptions/5b7b398e-f933-478c-8f6f-b7fa3e224df8
+```
+
 The Function host storage uses the Function App's system-assigned managed
 identity with Blob, Queue, and Table data roles. No storage account key is
 placed in Function settings or Key Vault.

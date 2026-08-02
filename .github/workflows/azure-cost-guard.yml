@@ -1,0 +1,82 @@
+name: Stop Azure apps at cost threshold
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Check the threshold without stopping resources
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  cost-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'MaklerApp_v2' }}
+      AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'maklerapp-v2' }}
+      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer' }}
+      AZURE_COST_THRESHOLD: ${{ vars.AZURE_MONTHLY_BUDGET_AMOUNT || '5' }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_93E5F25F36ED4D0696FECC2B9FEAD7C3 }}
+
+    steps:
+      - name: Login to Azure
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4D5DFEB4D24D4249B28893F961E67C9D }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9CAA3C4C152D4ABDAE8C259E1C2AF59B }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Check month-to-date Azure cost
+        id: cost
+        env:
+          COST_THRESHOLD: ${{ env.AZURE_COST_THRESHOLD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          query='{"type":"ActualCost","timeframe":"MonthToDate","dataset":{"granularity":"None","aggregation":{"totalCost":{"name":"PreTaxCost","function":"Sum"}}}}'
+          response=$(az rest \
+            --method post \
+            --url "https://management.azure.com/subscriptions/$AZURE_SUBSCRIPTION_ID/providers/Microsoft.CostManagement/query?api-version=2023-11-01" \
+            --headers Content-Type=application/json \
+            --body "$query" \
+            --output json)
+          current_cost=$(printf '%s' "$response" | python -c "import json, sys; rows=json.load(sys.stdin).get('properties', {}).get('rows', []); print(float(rows[0][0]) if rows else 0.0)")
+
+          if ! [[ "$current_cost" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo "Cost Management returned an invalid cost value: $current_cost" >&2
+            exit 1
+          fi
+          if ! [[ "$COST_THRESHOLD" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo "AZURE_COST_THRESHOLD must be a non-negative number" >&2
+            exit 1
+          fi
+
+          echo "Month-to-date pre-tax cost: $current_cost"
+          echo "Configured stop threshold: $COST_THRESHOLD"
+          if awk -v cost="$current_cost" -v threshold="$COST_THRESHOLD" 'BEGIN { exit !(cost >= threshold) }'; then
+            echo 'threshold_reached=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'threshold_reached=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop Azure apps
+        if: steps.cost.outputs.threshold_reached == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+        run: |
+          set -euo pipefail
+          az webapp stop \
+            --name "$AZURE_WEBAPP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP"
+          az functionapp stop \
+            --name "$AZURE_FUNCTION_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP"
+
+      - name: Report dry run
+        if: steps.cost.outputs.threshold_reached == 'true' && github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        run: echo 'Threshold reached; dry run selected, so Azure apps were not stopped.'
