@@ -84,6 +84,22 @@ match the repository, branch `main`, and workflow environment used by the
 action. The OIDC login continues to use the existing tenant and subscription
 secrets. A subscription-level role is not required for this workflow.
 
+Because the template also manages RBAC role assignments, the service principal
+needs the `User Access Administrator` role once at resource-group scope. An
+owner or existing user access administrator must run this bootstrap command:
+
+```bash
+az role assignment create \
+  --assignee-object-id 78e19b89-c199-4a0e-a127-5fa2a85f84b7 \
+  --assignee-principal-type ServicePrincipal \
+  --role "User Access Administrator" \
+  --scope /subscriptions/5b7b398e-f933-478c-8f6f-b7fa3e224df8/resourceGroups/MaklerApp_v2
+```
+
+After this one-time bootstrap, rerun the GitHub Action. The Bicep deployment
+can then create and maintain the Web App Blob access role and the deployment
+identity role defined in `resources.bicep`.
+
 ## Important network limitation
 
 An F1 App Service cannot use VNet Integration. Therefore this cost-minimal
