@@ -13,6 +13,42 @@ def test_format_price_handles_schneider_style_values():
     assert app.format_price('2.495.000 €') == '2.495.000 €'
 
 
+def test_static_property_card_parser_extracts_listing_fields():
+    html = '''<article><h2>Stilvolle Wohnung in München</h2>
+    <a href="/immobilien/objekt/?oid=1">Objekt ansehen</a>
+    <p>Wohnfläche 151,19 m²</p><p>2.698.000 €</p></article>'''
+
+    rows = app.parse_property_link_cards(
+        'https://egger-immo.de/immobilien/immobilien-muenchen/',
+        html,
+        r'/immobilien/objekt/\?oid=',
+    )
+
+    assert rows == [{
+        'title': 'Stilvolle Wohnung in München Objekt ansehen',
+        'price': '2.698.000 €',
+        'area_sqm': '151,19',
+        'location': 'N/A',
+        'link': 'https://egger-immo.de/immobilien/objekt/?oid=1',
+    }]
+
+
+def test_firstplace_parser_uses_each_static_offer_block():
+    html = '''<h2>FIRSTPLACE - Wohnung in Aubing</h2>
+    <p>Altaubing, 81245 München</p><p>585.000 €</p><p>88 m²</p>
+    <h2>FIRSTPLACE - Wohnung in Ottobrunn</h2>
+    <p>85521 Ottobrunn, München (Kreis)</p><p>719.000 €</p><p>107 m²</p>'''
+
+    with patch.object(app, 'fetch_html', return_value=html):
+        rows = app.fetch_firstplace_listings()
+
+    assert len(rows) == 2
+    assert rows[0]['title'] == 'Wohnung in Aubing'
+    assert rows[0]['price'] == '585.000 €'
+    assert rows[0]['area_sqm'] == '88'
+    assert rows[1]['price'] == '719.000 €'
+
+
 def test_new_sources_return_data():
     data = app.fetch_listings()
     assert 'firstplace' in data

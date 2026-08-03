@@ -1429,36 +1429,25 @@ def fetch_rogers_listings():
 
 
 def fetch_firstplace_listings():
-    req = urllib.request.Request(FIRSTPLACE_URL, headers={'User-Agent': 'Mozilla/5.0'})
-    html = urllib.request.urlopen(req, timeout=25).read().decode('utf-8', 'ignore')
+    html = fetch_html(FIRSTPLACE_URL, timeout=25)
 
     listings = []
     seen = set()
-    for match in re.finditer(r'FIRSTPLACE -[^<]+', html, re.I | re.S):
-        title = clean_text(match.group(0))
-        if not title or 'firstplace' not in title.lower():
+    matches = list(re.finditer(r'FIRSTPLACE\s*-\s*([^<]+)', html, re.I))
+    for index, match in enumerate(matches):
+        title = clean_text(match.group(1))
+        if not is_valid_title(title):
             continue
-        block = html[match.start():match.start() + 20000]
-        price_match = re.search(r'([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*€', block, re.I)
+        block_end = matches[index + 1].start() if index + 1 < len(matches) else len(html)
+        block = html[match.start():block_end]
+        price_match = re.search(r'(?:Preis|Kaufpreis)?\s*:?[\s\u00a0]*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€', clean_text(block), re.I)
         area_match = re.search(r'([0-9.,]+)\s*m²', block, re.I)
-        location_match = re.search(r'<span class="elementor-icon-list-text">([^<]+)</span>', block, re.I | re.S)
+        location_match = re.search(r'\b((?:[A-ZÄÖÜa-zäöüß][^<,]{2,40},\s*)?\d{5}\s+[A-ZÄÖÜa-zäöüß][A-Za-zÄÖÜäöüß\-]+(?:\s+\([^)]*\))?)', clean_text(block))
 
-        price = format_price(price_match.group(1)) if price_match else ''
+        price = price_match.group(1) if price_match else ''
         area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
         location = clean_text(location_match.group(1)) if location_match else ''
-
-        item = {
-            'title': title,
-            'price': price,
-            'area_sqm': area,
-            'location': location,
-            'link': FIRSTPLACE_URL,
-        }
-        key = (item['title'], item['price'], item['area_sqm'], item['location'])
-        if key in seen:
-            continue
-        seen.add(key)
-        listings.append(item)
+        add_listing(listings, seen, title, price, area, location, f'{FIRSTPLACE_URL}#offer-{index + 1}')
 
     return listings[:12]
 
@@ -2455,6 +2444,10 @@ def fetch_elvira_listings_retry_alt():
     except Exception:
         return []
 
+    listings = parse_property_link_cards(ELVIRA_URL, html, r'/immobilienangebote/(?!$)')
+    if listings:
+        return listings
+
     links = []
     for href_raw in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
         if not re.search(r'/immobilienangebote/(?!$)', href_raw, re.I):
@@ -3396,6 +3389,14 @@ def fetch_hoser_listings_retry_alt():
 
     rows = []
     for url in candidate_urls:
+        try:
+            page_html = fetch_html(url)
+        except Exception:
+            page_html = ''
+        if page_html:
+            rows = merge_listing_rows(rows, parse_price_blocks_without_links(url, page_html))
+            if len(rows) >= 12:
+                return rows[:12]
         rows = merge_listing_rows(rows, fetch_no_price_detail_retry(
             url,
             r'(immobilie|objekt|angebot|kauf|wohnen|haus|wohnung|expose|detail)',
@@ -3407,6 +3408,14 @@ def fetch_hoser_listings_retry_alt():
     if rows:
         return rows[:12]
     return fetch_zero_broker_detail_crawl(HOSER_URL)
+
+
+def fetch_sozius_listings_retry_alt():
+    try:
+        html = fetch_html(SOZIUS_URL)
+    except Exception:
+        return []
+    return parse_property_link_cards(SOZIUS_URL, html, r'/detailseite/')
 
 
 def fetch_wesoly_listings_retry_alt():
@@ -3592,6 +3601,51 @@ def parse_json_ld_listings(base_url: str, html: str):
             add_listing(listings, seen, title, price, area, location, link)
 
     return listings[:12]
+
+
+def parse_property_link_cards(base_url: str, html: str, link_pattern: str):
+    listings = []
+    seen = set()
+    for match in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.I | re.S):
+        href = urljoin(base_url, clean_text(match.group(1)))
+        if not re.search(link_pattern, href, re.I):
+            continue
+        chunk = html[max(0, match.start() - 1800):min(len(html), match.end() + 1800)]
+        chunk_text = clean_text(chunk)
+        title = extract_title(chunk)
+        if not is_valid_title(title):
+            title = clean_text(re.sub(r'<[^>]+>', ' ', match.group(2)))
+        if not is_valid_title(title):
+            title = normalize_title_from_link(href)
+        if not is_valid_title(title):
+            continue
+        price_match = re.search(
+            r'(?:Kaufpreis|Miete(?:\s+pro\s+Monat)?|Preis)?\s*:?' 
+            r'\s*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?|[0-9]{3,}(?:,[0-9]{2})?)\s*€',
+            chunk_text,
+            re.I,
+        )
+        if not price_match:
+            continue
+        area_match = re.search(r'(?:Wohnfläche|Wfl(?:\s+Fläche)?|Fläche|Grundstück)\s*(?:ca\.?|:)?\s*([0-9.,]+)\s*(?:m²|qm)', chunk_text, re.I)
+        area = area_match.group(1) if area_match else extract_area_text(chunk_text)
+        location = extract_location_text(chunk_text, '')
+        if not is_clean_location_text(location):
+            location = extract_location_from_title(title)
+        if not is_clean_location_text(location):
+            location = UNKNOWN_LOCATION
+        add_listing(listings, seen, title, price_match.group(1), area, location, href)
+        if len(listings) >= 12:
+            break
+    return listings[:12]
+
+
+def fetch_property_link_cards_retry(base_url: str, link_pattern: str):
+    try:
+        html = fetch_html(base_url)
+    except Exception:
+        return []
+    return parse_property_link_cards(base_url, html, link_pattern)
 
 
 def parse_price_blocks_without_links(base_url: str, html: str):
@@ -4344,7 +4398,62 @@ def fetch_tesch_listings():
 
 
 def fetch_ritter_listings():
-    return fetch_generic_broker_listings(RITTER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')
+    html = fetch_html(RITTER_URL)
+    property_links = []
+    seen_links = set()
+    for match in re.finditer(r'<a[^>]+href=["\']([^"\']*/immobilien/[^"\']+)["\'][^>]*>(.*?)</a>', html, re.I | re.S):
+        href = urljoin(RITTER_URL, clean_text(match.group(1)))
+        if re.search(r'\.pdf(?:$|#)|/(?:karte|details?)/?$', href, re.I):
+            continue
+        key = href.rstrip('/').lower()
+        if key in seen_links:
+            continue
+        seen_links.add(key)
+        property_links.append((match.start(), href, clean_text(match.group(2))))
+
+    listings = []
+    seen = set()
+    for index, (position, href, anchor_title) in enumerate(property_links):
+        next_position = property_links[index + 1][0] if index + 1 < len(property_links) else len(html)
+        block_text = clean_text(html[position:next_position])
+        title = anchor_title if is_valid_title(anchor_title) else normalize_title_from_link(href)
+        price_match = re.search(
+            r'(?:Kaufpreis|Preis)\s*:?[\s\u00a0]*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?|auf Anfrage)',
+            block_text,
+            re.I,
+        )
+        area_match = re.search(
+            r'Wohnfl(?:ä|ae)che\s*:?[\s\u00a0]*([0-9]+(?:[.,][0-9]+)?)\s*m(?:²|2)',
+            block_text,
+            re.I,
+        )
+        location_match = re.search(r'\b(\d{5}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-/ ]{2,50})\b', block_text)
+
+        price = price_match.group(1) if price_match else ''
+        area = area_match.group(1).replace(',', '.') if area_match else ''
+        location = clean_text(location_match.group(1)) if location_match else ''
+
+        if not price or not area or not location:
+            detail_html = fetch_html(href)
+            detail_text = clean_text(detail_html)
+            if not is_valid_title(title):
+                title = extract_page_title(detail_html)
+            if not price:
+                detail_price = re.search(
+                    r'(?:Kaufpreis|Preis)\s*:?[\s\u00a0]*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?|auf Anfrage)',
+                    detail_text,
+                    re.I,
+                )
+                if detail_price:
+                    price = detail_price.group(1)
+            if not area:
+                area = extract_area_text(detail_text)
+            if not location:
+                location = extract_postcode_city_location(detail_text)
+
+        add_listing(listings, seen, title, price, area, location or UNKNOWN_LOCATION, href)
+
+    return listings[:12]
 
 
 def fetch_hirschmann_listings():
@@ -5313,7 +5422,7 @@ BROKER_SOURCES = [
     ('orange', fetch_orange_listings),
     ('vorstadtmakler', fetch_vorstadtmakler_listings),
     ('teambim', lambda: fetch_external_broker_listings(TEAMBIM_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')),
-    ('sozius', lambda: fetch_source_specific_broker_listings(SOZIUS_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilie|objekt|expose|angebot|kauf)')),
+    ('sozius', fetch_sozius_listings_retry_alt),
     ('andreasschmid', lambda: fetch_source_specific_broker_listings(ANDREAS_SCHMID_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilie|objekt|expose|angebot|kauf)')),
     ('muenchnerimmobilien', lambda: fetch_source_specific_broker_listings(MUENCHNER_IMMOBILIEN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|haeuser)', r'(Haeuser-zum-Kauf|cmd=expose|objekt|immobilie)')),
     ('ausdemhaeuschen', lambda: fetch_source_specific_broker_listings(AUSDEMHAEUSCHEN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilie|objekt|expose|angebot|kauf)')),
@@ -5386,11 +5495,11 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'rohrer': fetch_rohrer_listings_source_specific,
     'mrlodge': fetch_mrlodge_listings_retry_alt,
     'wangenheim': fetch_wangenheim_listings_retry_alt,
-    'parkavenue': lambda: fetch_source_specific_broker_listings(PARKAVENUE_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|angebote|angebot|objekt|immobilie|details|expose)'),
+    'parkavenue': lambda: fetch_property_link_cards_retry(PARKAVENUE_URL, r'/apartment/'),
     'elvira': fetch_elvira_listings_retry_alt,
     'gg': lambda: fetch_source_specific_broker_listings(GG_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilienangebote|angebote|angebot|objekt|immobilie|kauf)'),
     'graef': lambda: fetch_source_specific_broker_listings(GRAEF_IMMO_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|angebote|angebot|objekt|immobilie|expose)'),
-    'egger': lambda: fetch_source_specific_with_embedded_retry(EGGER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|angebote|angebot|objekt|immobilie|expose)'),
+    'egger': lambda: fetch_property_link_cards_retry(EGGER_URL, r'/immobilien/objekt/\?oid='),
     'mytropper': fetch_mytropper_listings_retry_alt,
     'seebauer': lambda: fetch_source_specific_with_embedded_retry(SEEBAUER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|angebote|angebot|objekt|immobilie|detail|expose)'),
     'aundowohnbau': lambda: fetch_source_specific_broker_listings(AUNDOWOHNBAU_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(bestandsobjekte|immobilien|angebot|objekt|immobilie|kauf)'),
