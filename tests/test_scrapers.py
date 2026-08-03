@@ -1381,3 +1381,77 @@ def test_location_hardening_rejects_funer_false_tokens_and_keeps_real_two_token_
     assert app.extract_location_from_link('https://funer-immobilien-starnberg.de/immobilie/freie-wohnung-mit-2-loggien/') == ''
     assert app.extract_location_from_title('Im Herzen von Bad Tölz: herrlich wohnen, arbeiten und Freizeit genießen') == 'Bad Tölz'
     assert app.resolve_listing_location('Hobbyraum', 'starnberg besondere 3 zi dg galeriewohnung', 'https://funer-immobilien-starnberg.de/immobilie/starnberg-besondere-3-zi-dg-galeriewohnung-mit-sep-hellen-hobbyraum/') == 'N/A'
+
+
+def test_lebenstraum_retry_fetcher_uses_retry_alt():
+    """ZERO_RESULT_RETRY_FETCHERS['lebenstraum'] must not point to the same primary function."""
+    primary = app.fetch_lebenstraum_listings
+    retry = app.ZERO_RESULT_RETRY_FETCHERS.get('lebenstraum')
+    assert retry is not None and callable(retry)
+    assert retry is not primary, "lebenstraum retry must use fetch_lebenstraum_listings_retry_alt, not the primary fetcher"
+
+
+def test_joseffrei_retry_alt_falls_back_to_detail_crawl():
+    # Overview page has a listing link; detail page has price/area.
+    overview = (
+        '<a href="https://josef-frei-immobilien.de/objekte/haeuser/schoenes-haus-muenchen/">'
+        'Schönes Haus</a>'
+    )
+    detail = (
+        '<title>Schönes Haus in München</title>'
+        '<div>Kaufpreis: 950.000 €</div><div>Wohnfläche: 140 m²</div>'
+    )
+
+    def fake_fetch(url, timeout=20):
+        if '/schoenes-haus-muenchen' in url:
+            return detail
+        return overview
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_joseffrei_listings_retry_alt()
+
+    assert any(r.get('price', '').startswith('950') for r in rows), \
+        f"Expected price 950.000 from detail page, got {rows}"
+
+
+def test_gattinger_retry_alt_parses_h3_heading():
+    html = (
+        '<a href="https://gattinger-immo.de/angebote/objekt-1">'
+        '<h3>Attraktives Haus in München</h3>'
+        '<p>München-Maxvorstadt</p>'
+        '<p>Preis: 875.000 €</p>'
+        '<p>Wohnfläche ca.: 150 m²</p>'
+        '</a>'
+    )
+    with patch.object(app, 'fetch_html', return_value=html):
+        rows = app.fetch_gattinger_listings_retry_alt()
+    assert any('Attraktives Haus' in r.get('title', '') for r in rows), \
+        f"Expected h3 title to be parsed, got {rows}"
+
+
+def test_egger_retry_alt_falls_back_when_oid_pattern_absent():
+    overview = (
+        '<a href="https://egger-immo.de/immobilien/immobilien-muenchen/objekt/freies-haus/">'
+        'Freies Haus</a>'
+        '<p>Kaufpreis: 1.200.000 €</p><p>Wohnfläche: 180 m²</p>'
+    )
+    detail = '<title>Freies Haus München</title><div>Kaufpreis: 1.200.000 €</div>'
+
+    def fake_fetch(url, timeout=20):
+        return detail if 'freies-haus' in url else overview
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_egger_listings_retry_alt()
+    assert rows, "egger retry_alt must return results when oid= pattern absent but listing links exist"
+
+
+def test_egger_retry_alt_uses_oid_links_when_present():
+    html = (
+        '<article><h2>Stilvolle Wohnung</h2>'
+        '<a href="/immobilien/objekt/?oid=42">Objekt ansehen</a>'
+        '<p>Wohnfläche 130 m²</p><p>1.500.000 €</p></article>'
+    )
+    with patch.object(app, 'fetch_html', return_value=html):
+        rows = app.fetch_egger_listings_retry_alt()
+    assert any('oid=42' in r.get('link', '') for r in rows), \
+        f"egger retry_alt must still use ?oid= links when present, got {rows}"

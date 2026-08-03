@@ -41,6 +41,21 @@ jobs:
             --target timer_function/.python_packages/lib/site-packages
           PYTHONPATH=timer_function/.python_packages/lib/site-packages \
             python -c "import azure.functions; print('azure.functions package ok')"
+          PYTHONPATH=timer_function/.python_packages/lib/site-packages:timer_function \
+            python - <<'PY'
+          import json
+
+          from function_app import app
+
+          functions = app.get_functions()
+          assert len(functions) == 1, functions
+          binding = functions[0].get_raw_bindings()[0]
+          if isinstance(binding, str):
+              binding = json.loads(binding)
+          assert binding['type'] == 'timerTrigger', binding
+          assert binding['schedule'] == '0 0 * * * *', binding
+          print('timer binding smoke test ok')
+          PY
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
       - name: Upload artifact for deployment jobs
@@ -85,6 +100,12 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: python-app
+      - name: Verify transferred Function package
+        run: |
+          test -f timer_function/function_app.py
+          test -f timer_function/host.json
+          test -f timer_function/requirements.txt
+          test -f timer_function/.python_packages/lib/site-packages/azure/functions/__init__.py
       - name: Login to Azure
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
@@ -157,4 +178,13 @@ jobs:
         with:
           app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
           package: './timer_function'
+
+      - name: Verify deployed timer trigger
+        run: |
+          functions=$(az functionapp function list \
+            --name "$AZURE_FUNCTION_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='$AZURE_FUNCTION_APP_NAME/refresh_listings' && config.bindings[0].type=='timerTrigger' && config.bindings[0].schedule=='0 0 * * * *']" \
+            --output tsv)
+          test -n "$functions"
           

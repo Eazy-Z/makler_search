@@ -3173,7 +3173,7 @@ def fetch_gattinger_listings_retry_alt():
             href = urljoin(page_url, clean_text(match.group(1)))
             card_html = match.group(2)
 
-            title_match = re.search(r'<h4[^>]*>(.*?)</h4>', card_html, re.I | re.S)
+            title_match = re.search(r'<h[2-4][^>]*>(.*?)</h[2-4]>', card_html, re.I | re.S)
             title = clean_text(title_match.group(1)) if title_match else ''
             if not is_valid_title(title):
                 continue
@@ -3183,6 +3183,8 @@ def fetch_gattinger_listings_retry_alt():
             detail_text = ' '.join(p_values)
 
             price_match = re.search(r'(?:Preis|Kaltmiete)\s*:?\s*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€', detail_text, re.I)
+            if not price_match:
+                price_match = re.search(r'([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€', clean_text(card_html), re.I)
             price = clean_text(price_match.group(1)) if price_match else ''
 
             area_match = re.search(r'(?:Wohnfläche|Gesamtfläche|Grundstücksfläche|Büro-/\s*Praxisfläche)\s*ca\.?\s*:?\s*([0-9.,]+)\s*(?:m²|qm)', detail_text, re.I)
@@ -4320,7 +4322,10 @@ def fetch_dahler_listings_retry_alt():
 
     if listings:
         return listings
-    return merge_listing_rows(parse_json_ld_listings(DAHLER_URL, html), parse_price_blocks_without_links(DAHLER_URL, html))[:12]
+    merged = merge_listing_rows(parse_json_ld_listings(DAHLER_URL, html), parse_price_blocks_without_links(DAHLER_URL, html))
+    if merged:
+        return merged[:12]
+    return parse_link_cards(DAHLER_URL, html, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')[:12]
 
 
 def fetch_hirschmann_listings_retry_alt():
@@ -4877,6 +4882,20 @@ def fetch_wangenheim_listings():
     return fetch_external_broker_listings(WANGENHEIM_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')
 
 
+def fetch_egger_listings_retry_alt():
+    rows = fetch_property_link_cards_retry(EGGER_URL, r'/immobilien/objekt/\?oid=')
+    if rows:
+        return rows[:12]
+    rows = fetch_zero_broker_detail_crawl(EGGER_URL)
+    if rows:
+        return rows[:12]
+    return fetch_source_specific_with_embedded_retry(
+        EGGER_URL,
+        r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
+        r'(immobilien|objekt|expose|angebot|kauf|oid=)',
+    )
+
+
 def fetch_egger_listings():
     return fetch_generic_broker_listings(EGGER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')
 
@@ -5411,6 +5430,28 @@ def fetch_rsi_listings():
     return rows[:12]
 
 
+def fetch_joseffrei_listings_retry_alt():
+    rows = fetch_joseffrei_listings()
+    if rows:
+        return rows
+    merged = []
+    seen_links = set()
+    for page_url in (JOSEF_FREI_HAEUSER_URL, JOSEF_FREI_WOHNUNGEN_URL):
+        extra = fetch_no_price_detail_retry(
+            page_url,
+            r'(objekte|haeuser|wohnungen|immobilie|expose|angebot)',
+            r'(kaufpreis|wohnfl(?:ä|ae)che|zimmer|m²|preis)',
+        )
+        for row in extra:
+            key = row.get('link', '').rstrip('/').lower()
+            if key and key not in seen_links:
+                seen_links.add(key)
+                merged.append(row)
+        if len(merged) >= 12:
+            break
+    return merged[:12]
+
+
 def fetch_joseffrei_listings():
     listings = []
     seen = set()
@@ -5827,7 +5868,7 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'elvira': fetch_elvira_listings_retry_alt,
     'gg': lambda: fetch_source_specific_broker_listings(GG_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilienangebote|angebote|angebot|objekt|immobilie|kauf)'),
     'graef': lambda: fetch_source_specific_broker_listings(GRAEF_IMMO_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|angebote|angebot|objekt|immobilie|expose)'),
-    'egger': lambda: fetch_property_link_cards_retry(EGGER_URL, r'/immobilien/objekt/\?oid='),
+    'egger': fetch_egger_listings_retry_alt,
     'mytropper': fetch_mytropper_listings_retry_alt,
     'seebauer': lambda: fetch_source_specific_with_embedded_retry(SEEBAUER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilien|angebote|angebot|objekt|immobilie|detail|expose)'),
     'aundowohnbau': lambda: fetch_source_specific_broker_listings(AUNDOWOHNBAU_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(bestandsobjekte|immobilien|angebot|objekt|immobilie|kauf)'),
@@ -5862,7 +5903,7 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'seimmobilien': lambda: fetch_zero_broker_detail_crawl(SE_IMMOBILIEN_HAEUSER_URL),
     'wandl': lambda: fetch_zero_broker_detail_crawl(WANDL_URL),
     'hoser': fetch_hoser_listings_retry_alt,
-    'lebenstraum': fetch_lebenstraum_listings,
+    'lebenstraum': fetch_lebenstraum_listings_retry_alt,
     'maurer': lambda: fetch_zero_broker_detail_crawl(MAURER_URL),
     'bechler': fetch_bechler_listings_retry_alt,
     'wesoly': fetch_wesoly_listings_retry_alt,
@@ -5871,7 +5912,7 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'chalet': lambda: fetch_zero_broker_detail_crawl(CHALET_URL),
     'kraftziller': lambda: fetch_zero_broker_detail_crawl(KRAFT_ZILLER_URL),
     'wolf': lambda: fetch_zero_broker_detail_crawl(WOLF_HAUS_URL),
-    'joseffrei': fetch_joseffrei_listings,
+    'joseffrei': fetch_joseffrei_listings_retry_alt,
     'luenendonk': lambda: fetch_zero_broker_detail_crawl(LUENENDONK_URL),
     'harinali': lambda: fetch_zero_broker_detail_crawl(HARINALI_URL),
     'ramonaneckar': fetch_ramonaneckar_listings,

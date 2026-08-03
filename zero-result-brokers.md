@@ -7,8 +7,11 @@ The original direct-network inventory contained 23 zero-result brokers. Since th
 - `jalea`: repaired; live fetch returns 5 listings.
 - `engel`: repaired; the registered embedded retry returns 12 listings.
 - `teambim`: repaired; the current `/immobilien` page exposes stable object slugs and the source-specific retry returns 6 listings.
+- `egger`: repaired; the fallback detail crawl returns 1 listing when the legacy `oid` card pattern is absent.
+- `lebenstraum`: repaired; the retry path returns 12 listings.
+- `joseffrei`: repaired; the detail-page fallback returns 12 listings.
 - `hallinger`: source-specific parser and fixture are implemented, but the live domain currently has a TLS certificate failure, so live extraction is not confirmed.
-- `mar`, `dahler`, `krimbacher`, `egger`, `neuesnest`, `dalexis`, `ausdemhaeuschen`, `feuerlein`, `lebenstraum`, `joseffrei`, `reischl`, and `gattinger`: retry paths exist, but no additional parser change is justified without a stable live payload or fixture.
+- `mar`, `dahler`, `krimbacher`, `neuesnest`, `dalexis`, `ausdemhaeuschen`, `feuerlein`, `reischl`, and `gattinger`: retry paths exist, but no additional parser change is justified without a stable live payload or representative fixture.
 - `bunzco`, `cki`, `windisch`, `harinali`, and `muenchnerimmobilien`: blocked or unreachable during the direct audit; treat as access problems, not parser failures.
 - `weber`, `andreasschmid`, and `wandl`: reachable but no stable listing payload was identified; keep unresolved until a public feed or representative HTML fixture is available.
 
@@ -27,6 +30,8 @@ These sources expose static listing data and now have source-specific retry hand
 - `vorstadtmakler`: embedded listing data with strict property-link filtering (already repaired)
 - `wurmseder`: strict listing-slug and detail-page parsing (already repaired)
 - `teambim`: current `/immobilien/<slug>` links with detail-page price, area, and location parsing
+- `lebenstraum`: embedded/detail retry with price, area, and location extraction
+- `joseffrei`: detail-page fallback for house and apartment offer pages
 
 ## Confirmed unresolved or blocked
 
