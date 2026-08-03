@@ -13,6 +13,36 @@ def test_format_price_handles_schneider_style_values():
     assert app.format_price('2.495.000 €') == '2.495.000 €'
 
 
+def test_static_zero_result_broker_parsers_accept_current_field_markup():
+    schloss = '''<div class="inx-property-list__item-wrap"><div><div><div>
+    <div class="inx-property-list-item__title"><a href="/immobilien/haus">Haus in München</a></div>
+    <a class="inx-property-list-item__property-price"><span>875.000</span> €</a>
+    <i class="flaticon-size" title="Wohnfläche"></i> 120 m²
+    <div class="inx-property-list-item__location"><div>München</div></div>
+    </div></div></div></div>'''
+    rogers = '''<h2><a href="/immobilien/haus">Haus in München</a></h2>
+    <div><span>875.000 €</span><span>120 m²</span></div>'''
+    bartsch = '''<h3 class="property-title"><a href="/objekt/1">Haus in München</a></h3>
+    <div>Wohnfläche: 120 m²</div><div>875.000 EUR</div><div>Ort: München</div>'''
+    schneider = '''<div class="oo-listobject"><div><div>
+    <div class="oo-listtitle">Haus in München</div>
+    <a href="/objekt/1" aria-label="Details zur Immobilie"></a>
+    Kaufpreis</div><div class="oo-listtd">875.000 €</div>
+    Wohnfläche</div><div class="oo-listtd">ca. 120</div>
+    Ort</div><div class="oo-listtd">München</div></div></div>'''
+
+    with patch.object(app.urllib.request, 'urlopen', side_effect=[
+        type('Response', (), {'read': lambda self: schloss.encode()})(),
+        type('Response', (), {'read': lambda self: rogers.encode()})(),
+        type('Response', (), {'read': lambda self: bartsch.encode()})(),
+        type('Response', (), {'read': lambda self: schneider.encode()})(),
+    ]):
+        assert app.fetch_schloss_listings()[0]['price'] == '875.000 €'
+        assert app.fetch_rogers_listings()[0]['area_sqm'] == '120'
+        assert app.fetch_bartsch_listings()[0]['area_sqm'] == '120'
+        assert app.fetch_schneider_listings()[0]['price'] == '875.000 €'
+
+
 def test_listing_history_tracks_first_seen_age_and_deleted_note():
     previous = {
         'broker': [{

@@ -1478,6 +1478,8 @@ def fetch_schloss_listings():
     listings = []
     seen = set()
     cards = re.findall(r'<div class="inx-property-list__item-wrap">(.*?)</div>\s*</div>\s*</div>\s*</div>', html, re.S)
+    if not cards:
+        cards = re.findall(r'<div class="inx-property-list__item-wrap">(.*?)(?=<div class="inx-property-list__item-wrap">|$)', html, re.S)
     for card in cards:
         title_match = re.search(r'<div class="inx-property-list-item__title[^>]*>\s*<a[^>]+>(.*?)</a>', card, re.S)
         href_match = re.search(r'<a href="([^"]+)"[^>]*class="[^"]*inx-property-list-item__property-price', card, re.S)
@@ -1491,7 +1493,11 @@ def fetch_schloss_listings():
         href = href_match.group(1) if href_match else SCHLOSS_URL
         href = urljoin(SCHLOSS_URL, href)
 
-        price_match = re.search(r'<a[^>]*class="[^"]*inx-property-list-item__property-price[^"]*"[^>]*>\s*([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*&nbsp;€', card, re.S)
+        price_match = re.search(r'<a[^>]*class="[^"]*inx-property-list-item__property-price[^"]*"[^>]*>.*?([0-9][0-9.,]*)\s*(?:&nbsp;)?€', card, re.S)
+        if not price_match:
+            price_match = re.search(r'(?:Preis|Kaufpreis)[^0-9]{0,80}([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*(?:&nbsp;)?€', card, re.S | re.I)
+        if not price_match:
+            price_match = re.search(r'([0-9][0-9.,]*)\s*(?:€|&euro;)', clean_text(card), re.I)
         area_match = re.search(r'<i class="[^"]*flaticon-size[^"]*"[^>]*title="Wohnfläche"></i>\s*([0-9.,]+)\s*&nbsp;m²', card, re.S)
         location_match = re.search(r'<div class="inx-property-list-item__location"[^>]*>.*?<div>(.*?)</div>', card, re.S)
 
@@ -1538,8 +1544,12 @@ def fetch_rogers_listings():
             continue
 
         price_match = re.search(r'(?:Kaufpreis|Kaltmiete|Miete|Preis)\s*:\s*([0-9.,]+)\s*(?:EUR|€)?', text_block, re.I)
+        if not price_match:
+            price_match = re.search(r'([0-9]{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?)\s*(?:EUR|€)', chunk, re.I)
         location_match = re.search(r'(?i)Lage\s*:\s*(.*?)(?=\s*(?:Objekt|Kaufpreis|Kaltmiete|Miete|Preis)\s*:)', text_block)
         area_match = re.search(r'(?i)Wohnfläche\s*:\s*(?:ca\.)?\s*([0-9.,]+)', text_block)
+        if not area_match:
+            area_match = re.search(r'([0-9]{1,4}(?:[.,]\d{1,2})?)\s*m²', chunk, re.I)
 
         price = format_price(price_match.group(1)) if price_match else ''
         location = clean_text(location_match.group(1)) if location_match else ''
@@ -1601,7 +1611,11 @@ def fetch_bartsch_listings():
         if not price_match:
             price_match = re.search(r'([0-9.]+(?:\s?[.,]\d{3})*(?:\s?[.,]\d{2})?)\s*EUR', block, re.I | re.S)
         area_match = re.search(r'Wfl\.\s*([0-9.,]+)\s*m²', block, re.I | re.S)
+        if not area_match:
+            area_match = re.search(r'(?:Wohnfläche|Wohnfl\.?|Wfl\.?)\s*:?[^0-9]{0,80}([0-9.,]+)\s*m²', block, re.I | re.S)
         location_match = re.search(r'<div class="property-location">\s*(.*?)</div>', block, re.I | re.S)
+        if not location_match:
+            location_match = re.search(r'(?:Ort|Lage)\s*:?[\s<\w="/-]*([^<]+)', block, re.I | re.S)
 
         price = format_price(price_match.group(1)) if price_match else ''
         area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
@@ -1641,11 +1655,15 @@ def fetch_schneider_listings():
             continue
 
         href = href_match.group(1) if href_match else SCHNEIDER_URL
-        price_match = re.search(r'Kaufpreis</div><div class="oo-listtd">([0-9.,]+)\s*€', block, re.I)
+        price_match = re.search(r'Kaufpreis\s*</div>\s*<div class="oo-listtd">\s*([0-9.,]+)\s*€', block, re.I)
         if not price_match:
             price_match = re.search(r'Kaufpreis[^0-9]*(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)\s*€', block, re.I)
-        area_match = re.search(r'Wohnfläche</div><div class="oo-listtd">\s*ca\.\s*([0-9.,]+)', block, re.I)
-        location_match = re.search(r'Ort</div><div class="oo-listtd">\s*([^<]+)', block, re.I)
+        area_match = re.search(r'Wohnfläche\s*</div>\s*<div class="oo-listtd">\s*ca\.\s*([0-9.,]+)', block, re.I)
+        if not area_match:
+            area_match = re.search(r'Wohnfläche[^0-9]*([0-9.,]+)\s*m²?', block, re.I | re.S)
+        location_match = re.search(r'Ort\s*</div>\s*<div class="oo-listtd">\s*([^<]+)', block, re.I)
+        if not location_match:
+            location_match = re.search(r'Ort[^A-Za-zÄÖÜäöüß]+([^<]+)', block, re.I | re.S)
 
         price = format_price(price_match.group(1)) if price_match else ''
         area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''

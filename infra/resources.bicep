@@ -303,10 +303,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: 'systemAssignedIdentity'
         }
         {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
-        }
-        {
           name: 'WEBSITE_RUN_FROM_PACKAGE_BLOB_MI_RESOURCE_ID'
           value: 'SystemAssigned'
         }
