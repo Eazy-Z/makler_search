@@ -173,11 +173,36 @@ jobs:
           slot-name: 'Production'
           startup-command: 'python app.py'
 
+      - name: Capture current Function package setting
+        id: function-package-before
+        run: |
+          package=$(az functionapp config appsettings list \
+            --name "$AZURE_FUNCTION_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value | [0]" \
+            --output tsv)
+          echo "value=$package" >> "$GITHUB_OUTPUT"
+
       - name: Deploy timer Function App
         uses: Azure/functions-action@v1
+        id: deploy-to-function
+        continue-on-error: true
         with:
           app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
           package: './timer_function'
+
+      - name: Restart timer Function App
+        run: az functionapp restart --name "$AZURE_FUNCTION_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP"
+
+      - name: Verify Function package was updated
+        run: |
+          package=$(az functionapp config appsettings list \
+            --name "$AZURE_FUNCTION_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value | [0]" \
+            --output tsv)
+          test -n "$package"
+          test "$package" != "${{ steps.function-package-before.outputs.value }}"
 
       - name: Verify deployed timer trigger
         run: |
