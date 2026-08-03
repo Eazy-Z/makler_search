@@ -152,6 +152,10 @@ The Function host storage uses the Function App's system-assigned managed
 identity with Blob, Queue, and Table data roles. No storage account key is
 placed in Function settings or Key Vault.
 
+The Function App enables `SCM_DO_BUILD_DURING_DEPLOYMENT` and
+`ENABLE_ORYX_BUILD` so the Python dependency from
+`timer_function/requirements.txt` is installed before the package is mounted.
+
 ## Important network limitation
 
 An F1 App Service cannot use VNet Integration. Therefore this cost-minimal

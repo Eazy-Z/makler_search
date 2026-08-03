@@ -307,6 +307,14 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: '1'
         }
         {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'true'
+        }
+        {
+          name: 'ENABLE_ORYX_BUILD'
+          value: 'true'
+        }
+        {
           name: 'BACKEND_REFRESH_URL'
           value: backendRefreshUrl
         }
