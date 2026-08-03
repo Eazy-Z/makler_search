@@ -58,6 +58,7 @@ jobs:
     env:
       AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'maklerapp-v2' }}
       AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer' }}
+      AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID || '78e19b89-c199-4a0e-a127-5fa2a85f84b7' }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'MaklerApp_v2' }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westus3' }}
       AZURE_MONTHLY_BUDGET_AMOUNT: ${{ vars.AZURE_MONTHLY_BUDGET_AMOUNT || '5' }}
@@ -109,6 +110,7 @@ jobs:
               'entraClientId': os.environ['AZURE_ENTRA_CLIENT_ID'],
               'entraClientSecret': os.environ['DEPLOY_ENTRA_CLIENT_SECRET'],
               'backendRefreshToken': os.environ['DEPLOY_BACKEND_REFRESH_TOKEN'],
+              'deploymentPrincipalObjectId': os.environ['AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID'],
               'keyVaultName': os.environ['AZURE_KEY_VAULT_NAME'],
               'monthlyBudgetAmount': int(os.environ['AZURE_MONTHLY_BUDGET_AMOUNT']),
               'budgetAlertEmail': os.environ['AZURE_BUDGET_ALERT_EMAIL'],

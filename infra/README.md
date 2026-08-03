@@ -122,6 +122,14 @@ creates a first-run chicken-and-egg problem. After these one-time bootstrap
 assignments, rerun the GitHub Action. The Bicep deployment can then create and
 maintain the Web App Blob access role.
 
+The same deployment principal also needs `Storage Blob Data Contributor` on the
+Function host storage so `Azure/functions-action` can upload the package when
+RBAC is used. The template creates this assignment from
+`deploymentPrincipalObjectId`; the workflow defaults it to the Object ID shown
+above and allows overriding it with the repository variable
+`AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID`. The deployment principal must have
+`Role Based Access Control Administrator` before this assignment can be created.
+
 The optional `azure-cost-guard.yml` workflow checks month-to-date Cost
 Management data hourly and stops the Web App and Function App when
 `AZURE_MONTHLY_BUDGET_AMOUNT` is reached. Its OIDC principal additionally

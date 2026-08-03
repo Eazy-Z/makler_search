@@ -41,6 +41,9 @@ param backendRefreshUrl string = 'https://maklerapp-v2.azurewebsites.net/interna
 @description('Shared secret used by the timer function to call the internal refresh endpoint.')
 param backendRefreshToken string
 
+@description('Object ID of the GitHub Actions deployment service principal. It needs Blob Data Contributor on the Function host storage for RBAC package deployment.')
+param deploymentPrincipalObjectId string
+
 @description('SMTP host used by the timer function. No Azure email resource is provisioned to keep recurring costs low.')
 param emailSmtpHost string = ''
 
@@ -76,6 +79,7 @@ module platform './resources.bicep' = {
     budgetAlertEmail: budgetAlertEmail
     backendRefreshUrl: backendRefreshUrl
     backendRefreshToken: backendRefreshToken
+    deploymentPrincipalObjectId: deploymentPrincipalObjectId
     emailSmtpHost: emailSmtpHost
     emailSmtpPort: emailSmtpPort
     emailSmtpUsername: emailSmtpUsername

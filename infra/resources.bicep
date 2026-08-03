@@ -15,6 +15,7 @@ param budgetAlertEmail string
 param backendRefreshUrl string
 @secure()
 param backendRefreshToken string
+param deploymentPrincipalObjectId string
 param emailSmtpHost string
 param emailSmtpPort string
 param emailSmtpUsername string
@@ -354,6 +355,19 @@ resource functionBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' =
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
+    )
+  }
+}
+
+resource functionDeploymentBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(functionStorageAccount.id, deploymentPrincipalObjectId, 'Storage Blob Data Contributor')
+  scope: functionStorageAccount
+  properties: {
+    principalId: deploymentPrincipalObjectId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
     )
   }
 }

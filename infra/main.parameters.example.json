@@ -41,6 +41,9 @@
     "backendRefreshToken": {
       "value": "<provide-at-deployment-time>"
     },
+    "deploymentPrincipalObjectId": {
+      "value": "<github-actions-service-principal-object-id>"
+    },
     "emailSmtpHost": {
       "value": ""
     },
