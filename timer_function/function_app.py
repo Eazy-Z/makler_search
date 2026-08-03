@@ -18,12 +18,7 @@ def is_refresh_hour(now=None):
     return REFRESH_START_HOUR <= now.hour < REFRESH_END_HOUR
 
 
-@app.timer_trigger(
-    schedule='0 0 * * * *',
-    arg_name='timer',
-    run_on_startup=False,
-    use_monitor=True,
-)
+@app.timer_trigger(schedule='0 0 * * * *', arg_name='timer')
 def refresh_listings(timer: func.TimerRequest) -> None:
     now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE))
     if not is_refresh_hour(now):

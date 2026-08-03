@@ -148,6 +148,11 @@ az role assignment create \
   --scope /subscriptions/5b7b398e-f933-478c-8f6f-b7fa3e224df8
 ```
 
+The Function App keeps public network access enabled so Azure Functions and
+`Azure/functions-action` can synchronize timer triggers after deployment. The
+Function has no public HTTP trigger; its only application trigger is the
+scheduled timer, and administrative endpoints remain platform-protected.
+
 The Function host storage uses the Function App's system-assigned managed
 identity with Blob, Queue, and Table data roles. No storage account key is
 placed in Function settings or Key Vault.

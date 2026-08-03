@@ -272,7 +272,7 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
   properties: {
     serverFarmId: functionPlan.id
     httpsOnly: true
-    publicNetworkAccess: 'Disabled'
+    publicNetworkAccess: 'Enabled'
     siteConfig: {
       linuxFxVersion: 'Python|3.12'
       minTlsVersion: '1.2'
