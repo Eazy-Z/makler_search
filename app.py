@@ -6,6 +6,7 @@ import gzip
 import zlib
 import ipaddress
 import logging
+import threading
 from email.utils import formatdate
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 import urllib.request
@@ -22,6 +23,15 @@ TARGET_URL = 'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm'
 LISTINGS_CACHE = None
 LISTINGS_CACHE_TIME = 0
 LISTINGS_CACHE_UPDATED_AT = None
+REFRESH_STATE_LOCK = threading.Lock()
+REFRESH_STATE = {
+    'active': False,
+    'started_at': None,
+    'updated_at': None,
+    'brokers': {},
+    'listings': None,
+    'error': None,
+}
 CACHE_TTL_SECONDS = 5 * 60
 LISTINGS_REFRESH_SECONDS = 3 * 60 * 60
 LISTINGS_FETCH_TIMEOUT_SECONDS = 120
@@ -5464,6 +5474,32 @@ def fetch_broker_rows_with_retry(key: str, fetcher):
     return []
 
 
+def fetch_broker_rows_with_status(key: str, fetcher):
+    errors = []
+    try:
+        normalized = apply_listing_rules(fetcher())
+    except Exception as error:
+        normalized = []
+        errors.append(error)
+
+    if normalized:
+        return normalized, None
+
+    for retry_fetcher in iter_retry_fetchers(key):
+        try:
+            retry_rows = apply_listing_rules(retry_fetcher())
+        except Exception as error:
+            errors.append(error)
+            continue
+        if retry_rows:
+            return retry_rows, None
+
+    if errors:
+        error = errors[-1]
+        return [], f'{type(error).__name__}: {error}'
+    return [], None
+
+
 def fetch_listings(force_refresh=False):
     global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
     now = time.time()
@@ -5510,7 +5546,9 @@ def fetch_listings(force_refresh=False):
     except FuturesTimeoutError:
         pass
     finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+        shutdown = getattr(executor, 'shutdown', None)
+        if shutdown:
+            shutdown(wait=False, cancel_futures=True)
 
     # Ensure API returns even when some brokers time out.
     for key, _fetcher in BROKER_SOURCES:
@@ -5533,6 +5571,128 @@ def fetch_listings(force_refresh=False):
     return LISTINGS_CACHE
 
 
+def empty_listings():
+    return {key: [] for key, _fetcher in BROKER_SOURCES}
+
+
+def refresh_status_payload(include_listings=False):
+    with REFRESH_STATE_LOCK:
+        payload = {
+            'active': REFRESH_STATE['active'],
+            'started_at': REFRESH_STATE['started_at'],
+            'updated_at': REFRESH_STATE['updated_at'] or LISTINGS_CACHE_UPDATED_AT,
+            'brokers': {
+                key: dict(status)
+                for key, status in REFRESH_STATE['brokers'].items()
+            },
+            'error': REFRESH_STATE['error'],
+        }
+        if include_listings:
+            payload['listings'] = REFRESH_STATE['listings']
+        return payload
+
+
+def run_async_refresh():
+    global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
+
+    listings = {}
+    executor = ThreadPoolExecutor(max_workers=min(8, len(BROKER_SOURCES)) or 1)
+    futures = {
+        executor.submit(
+            lambda key=key, fetcher=fetcher: fetch_broker_rows_with_status(key, fetcher)
+        ): key
+        for key, fetcher in BROKER_SOURCES
+    }
+
+    try:
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                rows, error_message = future.result()
+            except Exception as error:
+                rows = []
+                error_message = f'{type(error).__name__}: {error}'
+
+            listings[key] = rows
+            with REFRESH_STATE_LOCK:
+                REFRESH_STATE['brokers'][key] = {
+                    'status': 'error' if error_message else ('done' if rows else 'empty'),
+                    'count': len(rows),
+                    'error': error_message,
+                }
+    finally:
+        executor.shutdown(wait=True)
+
+    for key, _fetcher in BROKER_SOURCES:
+        listings.setdefault(key, [])
+
+    updated_at = time.time()
+    blob_updated_at = LISTINGS_CACHE_UPDATED_AT
+    storage_error = None
+    if LISTINGS_BLOB_ENABLED and any(listings.values()):
+        try:
+            write_listings_blob(listings, updated_at)
+            blob_updated_at = updated_at
+        except Exception as error:
+            storage_error = format_blob_error(error)
+            LOGGER.error('Could not write listings blob %s', storage_error)
+
+    LISTINGS_CACHE = listings
+    LISTINGS_CACHE_TIME = updated_at
+    LISTINGS_CACHE_UPDATED_AT = blob_updated_at
+    with REFRESH_STATE_LOCK:
+        REFRESH_STATE.update({
+            'active': False,
+            'updated_at': blob_updated_at,
+            'listings': listings,
+            'error': storage_error,
+        })
+
+
+def start_async_refresh():
+    with REFRESH_STATE_LOCK:
+        if REFRESH_STATE['active']:
+            return False
+        REFRESH_STATE.update({
+            'active': True,
+            'started_at': time.time(),
+            'updated_at': None,
+            'brokers': {
+                key: {'status': 'loading', 'count': 0, 'error': None}
+                for key, _fetcher in BROKER_SOURCES
+            },
+            'listings': None,
+            'error': None,
+        })
+
+    threading.Thread(target=run_async_refresh, daemon=True).start()
+    return True
+
+
+def get_current_listings():
+    global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
+    now = time.time()
+    if LISTINGS_CACHE is not None:
+        return LISTINGS_CACHE
+
+    try:
+        persisted_listings = read_listings_blob()
+    except Exception as error:
+        LOGGER.warning(
+            'Could not read listings blob %s: %s',
+            LISTINGS_BLOB_NAME,
+            format_blob_error(error),
+        )
+        persisted_listings = None
+    if persisted_listings is not None:
+        persisted_listings, generated_at = persisted_listings
+        LISTINGS_CACHE = persisted_listings
+        LISTINGS_CACHE_TIME = now
+        LISTINGS_CACHE_UPDATED_AT = generated_at
+        return LISTINGS_CACHE
+    return empty_listings()
+
+
 def request_origin_allowed(handler):
     origin = handler.headers.get('Origin')
     if not origin:
@@ -5544,13 +5704,29 @@ def request_origin_allowed(handler):
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/api/listings/refresh-status':
+            payload = refresh_status_payload(include_listings=not REFRESH_STATE['active'])
+            body = json.dumps(payload).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path.startswith('/api/listings'):
-            listings = fetch_listings()
+            listings = get_current_listings()
+            with REFRESH_STATE_LOCK:
+                refresh_active = REFRESH_STATE['active']
+            if LISTINGS_CACHE is None and not refresh_active:
+                start_async_refresh()
             body = json.dumps(listings).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             if LISTINGS_CACHE_UPDATED_AT is not None:
                 self.send_header('X-Listings-Updated-At', str(LISTINGS_CACHE_UPDATED_AT))
+            with REFRESH_STATE_LOCK:
+                self.send_header('X-Listings-Refresh-Active', str(REFRESH_STATE['active']).lower())
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -5631,6 +5807,8 @@ class Handler(BaseHTTPRequestHandler):
         const cacheTtlMs = 5 * 60 * 1000;
         let brokerQuery = '';
         let listingQuery = '';
+        let brokerStatuses = {};
+        let refreshPollTimer = null;
 
         function parsePriceValue(value) {
             const text = String(value || '').replace(/[^0-9,.-]/g, '');
@@ -5802,6 +5980,17 @@ class Handler(BaseHTTPRequestHandler):
                 root.append(status);
                 return;
             }
+            const brokerStatus = brokerStatuses[activeTab];
+            if (brokerStatus && brokerStatus.status === 'loading') {
+                root.className = '';
+                root.textContent = `Lade Angebote von ${formatLabel(activeTab)}...`;
+                return;
+            }
+            if (brokerStatus && brokerStatus.status === 'error') {
+                root.className = '';
+                root.textContent = `Fehler beim Laden von ${formatLabel(activeTab)}: ${brokerStatus.error || 'Unbekannter Fehler'}`;
+                return;
+            }
             const sourceListings = activeTab === allListingsTab
                 ? flattenListings(cachedData)
                 : (cachedData[activeTab] || []);
@@ -5851,7 +6040,15 @@ class Handler(BaseHTTPRequestHandler):
                 button.className = `tab${key === activeTab ? ' active' : ''}`;
                 button.dataset.tab = key;
                 const blockedReason = blockedBrokerReasons[key];
-                const suffix = blockedReason ? ` (${blockedReason})` : ` (${count})`;
+                const brokerStatus = brokerStatuses[key];
+                let suffix = ` (${count})`;
+                if (blockedReason) {
+                    suffix = ` (${blockedReason})`;
+                } else if (brokerStatus && brokerStatus.status === 'loading') {
+                    suffix = ' (Lädt...)';
+                } else if (brokerStatus && brokerStatus.status === 'error') {
+                    suffix = ' (Fehler)';
+                }
                 button.textContent = `${formatLabel(key)}${suffix}`;
                 button.addEventListener('click', () => {
                     tabsRoot.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
@@ -5861,6 +6058,33 @@ class Handler(BaseHTTPRequestHandler):
                 });
                 tabsRoot.append(button);
             });
+        }
+
+        function applyRefreshStatus(status) {
+            brokerStatuses = status.brokers || {};
+            if (status.listings) {
+                cachedData = status.listings;
+                cacheTimestamp = Date.now();
+                renderLastUpdated(status.updated_at);
+            }
+            renderTabs(cachedData || {});
+            renderActiveListings();
+        }
+
+        async function pollRefreshStatus() {
+            try {
+                const res = await fetch('/api/listings/refresh-status');
+                const status = await readJsonResponse(res);
+                applyRefreshStatus(status);
+                refreshAllButton.disabled = status.active;
+                if (status.active) {
+                    refreshPollTimer = setTimeout(pollRefreshStatus, 1000);
+                } else {
+                    refreshPollTimer = null;
+                }
+            } catch (err) {
+                refreshPollTimer = setTimeout(pollRefreshStatus, 2000);
+            }
         }
 
         async function loadListings(forceRefresh = false) {
@@ -5883,6 +6107,10 @@ class Handler(BaseHTTPRequestHandler):
                 renderLastUpdated(res.headers.get('X-Listings-Updated-At'));
                 renderTabs(cachedData);
                 renderActiveListings();
+                if (res.headers.get('X-Listings-Refresh-Active') === 'true') {
+                    refreshAllButton.disabled = true;
+                    pollRefreshStatus();
+                }
             } catch (err) {
                 root.className = '';
                 root.textContent = 'Die Inserate konnten nicht geladen werden.';
@@ -5898,11 +6126,8 @@ class Handler(BaseHTTPRequestHandler):
                 if (!res.ok || !result.ok) {
                     throw new Error(result.error || 'Aktualisierung fehlgeschlagen');
                 }
-                cachedData = result.listings;
-                cacheTimestamp = Date.now();
-                renderLastUpdated(result.updated_at);
-                renderTabs(cachedData);
-                renderActiveListings();
+                applyRefreshStatus(result.status || {});
+                pollRefreshStatus();
             } catch (err) {
                 root.className = '';
                 root.textContent = err.message || 'Aktualisierung fehlgeschlagen.';
@@ -5969,18 +6194,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
             LAST_REFRESH_REQUEST_TIME = now
-            try:
-                listings = fetch_listings(force_refresh=True)
-                body = json.dumps({
-                    'ok': True,
-                    'listings': listings,
-                    'updated_at': LISTINGS_CACHE_UPDATED_AT,
-                }).encode('utf-8')
-                self.send_response(200)
-            except Exception as error:
-                LOGGER.error('Global listings refresh failed: %s', format_blob_error(error))
-                body = json.dumps({'ok': False, 'error': 'Aktualisierung fehlgeschlagen'}).encode('utf-8')
-                self.send_response(502)
+            start_async_refresh()
+            body = json.dumps({
+                'ok': True,
+                'active': True,
+                'status': refresh_status_payload(),
+            }).encode('utf-8')
+            self.send_response(202)
         else:
             body = json.dumps({'ok': False, 'error': 'Unknown endpoint'}).encode('utf-8')
             self.send_response(404)
