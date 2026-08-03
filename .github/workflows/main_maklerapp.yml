@@ -78,7 +78,7 @@ jobs:
     needs: build
     env:
       AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'maklerapp-v2' }}
-      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer' }}
+      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer-flex' }}
       AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID || '78e19b89-c199-4a0e-a127-5fa2a85f84b7' }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'MaklerApp_v2' }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westus3' }}
@@ -173,36 +173,15 @@ jobs:
           slot-name: 'Production'
           startup-command: 'python app.py'
 
-      - name: Capture current Function package setting
-        id: function-package-before
-        run: |
-          package=$(az functionapp config appsettings list \
-            --name "$AZURE_FUNCTION_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value | [0]" \
-            --output tsv)
-          echo "value=$package" >> "$GITHUB_OUTPUT"
-
       - name: Deploy timer Function App
         uses: Azure/functions-action@v1
         id: deploy-to-function
-        continue-on-error: true
         with:
           app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
           package: './timer_function'
 
       - name: Restart timer Function App
         run: az functionapp restart --name "$AZURE_FUNCTION_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP"
-
-      - name: Verify Function package was updated
-        run: |
-          package=$(az functionapp config appsettings list \
-            --name "$AZURE_FUNCTION_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value | [0]" \
-            --output tsv)
-          test -n "$package"
-          test "$package" != "${{ steps.function-package-before.outputs.value }}"
 
       - name: Verify deployed timer trigger
         run: |

@@ -20,7 +20,7 @@ jobs:
     env:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'MaklerApp_v2' }}
       AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'maklerapp-v2' }}
-      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer' }}
+      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer-flex' }}
       AZURE_COST_THRESHOLD: ${{ vars.AZURE_MONTHLY_BUDGET_AMOUNT || '5' }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_93E5F25F36ED4D0696FECC2B9FEAD7C3 }}
 

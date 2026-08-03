@@ -4,7 +4,7 @@ This Bicep deployment creates or updates the Makler Search platform in
 resource group `MaklerApp_v2` in `westus3`:
 
 - Linux App Service on the `F1` Free plan
-- Linux Function App on the `Y1` Consumption plan
+- Linux Function App on the `FC1` Flex Consumption plan
 - Private listing container `maklerapp` in a `Standard_LRS` / `Hot` storage account
 - Separate `Standard_LRS` / `Hot` storage account for the Function host
 - System-assigned identity and `Storage Blob Data Contributor` for the Web App
@@ -160,9 +160,22 @@ placed in Function settings or Key Vault.
 The GitHub build uses Python 3.12, matching the Function App runtime, and
 installs the Python dependency from
 `timer_function/requirements.txt` into
-`timer_function/.python_packages/lib/site-packages` before the package is
-mounted. This is required for Linux Consumption deployments using
-`WEBSITE_RUN_FROM_PACKAGE`.
+  `timer_function/.python_packages/lib/site-packages` before the package is
+  deployed. Flex Consumption stores the deployment package in the dedicated
+  Blob container managed by the template; `WEBSITE_RUN_FROM_PACKAGE` is not
+  used.
+
+## Flex Consumption migration
+
+Azure does not support an in-place migration from a Consumption Function App to
+Flex Consumption. The default name `maklerapp-v2-timer-flex` therefore creates
+a new app and leaves the old `maklerapp-v2-timer` app untouched. Deploy the
+Function package, verify the timer trigger, and remove the old app separately
+once the new app is confirmed.
+
+The Function App uses a system-assigned identity for both host storage and the
+Flex deployment container. The deployment principal needs `Storage Blob Data
+Contributor` on the Function host storage, as described above.
 
 ## Important network limitation
 

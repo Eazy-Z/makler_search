@@ -26,7 +26,9 @@ param emailRecipients string
 
 var listingsContainerName = 'maklerapp'
 var listingsBlobName = 'latest.json'
+var functionDeploymentContainerName = 'function-deployments'
 var listingsContainerUrl = 'https://${listingsStorageAccount.name}.blob.core.windows.net/${listingsContainerName}'
+var functionDeploymentContainerUrl = 'https://${functionStorageAccount.name}.blob.core.windows.net/${functionDeploymentContainerName}'
 var entraIssuer = 'https://login.microsoftonline.com/${tenantId}/v2.0'
 var keyVaultReference = '@Microsoft.KeyVault(SecretUri='
 
@@ -104,6 +106,13 @@ resource functionStorageQueueService 'Microsoft.Storage/storageAccounts/queueSer
 
 resource functionStorageTableService 'Microsoft.Storage/storageAccounts/tableServices@2023-05-01' = {
   name: '${functionStorageAccount.name}/default'
+}
+
+resource functionDeploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: '${functionStorageAccount.name}/default/${functionDeploymentContainerName}'
+  properties: {
+    publicAccess: 'None'
+  }
 }
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
@@ -249,20 +258,20 @@ resource webAppBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
-resource functionPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
+resource functionPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: '${functionAppName}-plan'
   location: location
   kind: 'functionapp'
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
   properties: {
     reserved: true
   }
 }
 
-resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
+resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
@@ -273,38 +282,44 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
     serverFarmId: functionPlan.id
     httpsOnly: true
     publicNetworkAccess: 'Enabled'
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: functionDeploymentContainerUrl
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      runtime: {
+        name: 'python'
+        version: '3.12'
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 40
+        instanceMemoryMB: 512
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'Python|3.12'
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       appSettings: concat([
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'python'
-        }
-        {
-          name: 'FUNCTIONS_WORKER_RUNTIME_VERSION'
-          value: '3.12'
-        }
-        {
-          name: 'AzureWebJobsStorage__accountName'
-          value: functionStorageAccount.name
-        }
         {
           name: 'AzureWebJobsStorage__credential'
           value: 'managedidentity'
         }
         {
-          name: 'AzureWebJobsStorage__clientId'
-          value: 'systemAssignedIdentity'
+          name: 'AzureWebJobsStorage__blobServiceUri'
+          value: 'https://${functionStorageAccount.name}.blob.core.windows.net'
         }
         {
-          name: 'WEBSITE_RUN_FROM_PACKAGE_BLOB_MI_RESOURCE_ID'
-          value: 'SystemAssigned'
+          name: 'AzureWebJobsStorage__queueServiceUri'
+          value: 'https://${functionStorageAccount.name}.queue.core.windows.net'
+        }
+        {
+          name: 'AzureWebJobsStorage__tableServiceUri'
+          value: 'https://${functionStorageAccount.name}.table.core.windows.net'
         }
         {
           name: 'BACKEND_REFRESH_URL'
@@ -344,6 +359,9 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
       }] : [])
     }
   }
+  dependsOn: [
+    functionDeploymentContainer
+  ]
 }
 
 resource functionBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

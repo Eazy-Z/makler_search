@@ -22,8 +22,8 @@ param functionStorageAccountName string = 'maklerappv2func'
 @description('Free Linux App Service name.')
 param webAppName string = 'maklerapp-v2'
 
-@description('Linux Consumption Function App name.')
-param functionAppName string = 'maklerapp-v2-timer'
+@description('Flex Consumption Function App name. Flex requires a new app when migrating from Consumption.')
+param functionAppName string = 'maklerapp-v2-timer-flex'
 
 @description('Globally unique Key Vault name for application secrets.')
 param keyVaultName string = 'maklerappv2kv'
