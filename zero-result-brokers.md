@@ -6,6 +6,7 @@ The original direct-network inventory contained 23 zero-result brokers. Since th
 
 - `jalea`: repaired; live fetch returns 5 listings.
 - `engel`: repaired; the registered embedded retry returns 12 listings.
+- `teambim`: repaired; the current `/immobilien` page exposes stable object slugs and the source-specific retry returns 6 listings.
 - `hallinger`: source-specific parser and fixture are implemented, but the live domain currently has a TLS certificate failure, so live extraction is not confirmed.
 - `mar`, `dahler`, `krimbacher`, `egger`, `neuesnest`, `dalexis`, `ausdemhaeuschen`, `feuerlein`, `lebenstraum`, `joseffrei`, `reischl`, and `gattinger`: retry paths exist, but no additional parser change is justified without a stable live payload or fixture.
 - `bunzco`, `cki`, `windisch`, `harinali`, and `muenchnerimmobilien`: blocked or unreachable during the direct audit; treat as access problems, not parser failures.
@@ -25,6 +26,7 @@ These sources expose static listing data and now have source-specific retry hand
 - `ritter`: source-specific property-block/detail parsing (already repaired)
 - `vorstadtmakler`: embedded listing data with strict property-link filtering (already repaired)
 - `wurmseder`: strict listing-slug and detail-page parsing (already repaired)
+- `teambim`: current `/immobilien/<slug>` links with detail-page price, area, and location parsing
 
 ## Confirmed unresolved or blocked
 
@@ -32,7 +34,6 @@ These brokers remain unresolved after repeated parser attempts, with the stated 
 
 - `bunzco` (Bunz & Co Immobilien): access blocked with HTTP 403 on the root and `/immobilien/`; no safe public feed identified.
 - `neuesnest` (Neues Nest): own pages provide weak static listing signals; no stable public listing feed identified.
-- `teambim` (Team BIM): accessible response is dominated by consent and JavaScript content; no stable static listing payload identified.
 - `cki` (CKI Immobilien): current response/parser path does not expose a stable listing payload; requires a fresh source inspection.
 
 ## Not classifiable from this machine

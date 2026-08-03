@@ -344,7 +344,7 @@ MARTE_URL = 'https://www.immobilienmarte.de/immobilienangebote.xhtml'
 DAWONIA_URL = 'https://www.dawonia.de/de/kaufen'
 ORANGE_URL = 'https://orange-immobilien.de/immobilien?sectionId=69046b637c7cacf55d10a875&fields%5Bgeneral_vermarktungsart%5D=KAUF&fields%5Bgeneral_umkreissuche%5D%5Bloc%5D=M%C3%BCnchen&fields%5Bgeneral_umkreissuche%5D%5Bdistance%5D=25'
 VORSTADTMAKLER_URL = 'https://vorstadtmakler.de/immobilien'
-TEAMBIM_URL = 'https://team-bim.de/#imag_immobiliensuche'
+TEAMBIM_URL = 'https://team-bim.de/immobilien'
 SOZIUS_URL = 'https://www.sozius-immobilien.de/immobilien/wohnen/'
 ANDREAS_SCHMID_URL = 'https://www.andreas-schmid-immobilien.de/alle-immobilien/'
 MUENCHNER_IMMOBILIEN_URL = 'https://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html'
@@ -3614,6 +3614,70 @@ def fetch_hallinger_listings_retry_alt():
     return listings
 
 
+def fetch_teambim_listings_retry_alt():
+    try:
+        html = fetch_html(TEAMBIM_URL)
+    except Exception:
+        return []
+
+    links = []
+    seen_links = set()
+    for href_raw in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
+        href = urljoin(TEAMBIM_URL, clean_text(href_raw))
+        if not re.search(r'https?://(?:www\.)?team-bim\.de/immobilien/[^/?#]+/?$', href, re.I):
+            continue
+        slug = href.rstrip('/').rsplit('/', 1)[-1].lower()
+        if slug in {'feed', 'angebote', 'immobilien'}:
+            continue
+        key = href.rstrip('/').lower()
+        if key in seen_links:
+            continue
+        seen_links.add(key)
+        links.append(href)
+
+    listings = []
+    seen = set()
+    for href in links[:24]:
+        try:
+            detail_html = fetch_html(href)
+        except Exception:
+            detail_html = ''
+        detail_text = clean_text(detail_html)
+        title = extract_page_title(detail_html) if detail_html else normalize_title_from_link(href)
+        if not is_valid_title(title):
+            title = normalize_title_from_link(href)
+        if not is_valid_title(title):
+            continue
+
+        price_match = re.search(
+            r'(?:Kaufpreis|Preis)\s*:?[\s€]*(?:ca\.?\s*)?([0-9.]+(?:,[0-9]{2})?)',
+            detail_text,
+            re.I,
+        )
+        if not price_match:
+            price_match = re.search(
+                r'([0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{2})?)\s*(?:€|EUR)',
+                detail_text,
+                re.I,
+            )
+        area = extract_area_text(detail_text)
+        location = extract_location_text(detail_text, '')
+        if not is_clean_location_text(location):
+            location = extract_location_from_title(title)
+        if not is_clean_location_text(location):
+            location = extract_location_from_link(href)
+        add_listing(
+            listings,
+            seen,
+            title,
+            price_match.group(1) if price_match else 'Preis auf Anfrage',
+            area,
+            location if is_clean_location_text(location) else UNKNOWN_LOCATION,
+            href,
+        )
+    return listings[:12]
+
+
 def fetch_wesoly_listings_retry_alt():
     rows = fetch_source_specific_with_embedded_retry(
         WESOLY_URL,
@@ -5681,7 +5745,7 @@ BROKER_SOURCES = [
     ('dawonia', fetch_dawonia_listings),
     ('orange', fetch_orange_listings),
     ('vorstadtmakler', fetch_vorstadtmakler_listings),
-    ('teambim', lambda: fetch_external_broker_listings(TEAMBIM_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')),
+    ('teambim', fetch_teambim_listings_retry_alt),
     ('sozius', fetch_sozius_listings_retry_alt),
     ('andreasschmid', lambda: fetch_source_specific_broker_listings(ANDREAS_SCHMID_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilie|objekt|expose|angebot|kauf)')),
     ('muenchnerimmobilien', lambda: fetch_source_specific_broker_listings(MUENCHNER_IMMOBILIEN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|haeuser)', r'(Haeuser-zum-Kauf|cmd=expose|objekt|immobilie)')),

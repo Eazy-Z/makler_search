@@ -88,6 +88,29 @@ def test_listing_history_keeps_old_price_when_price_changes():
     assert next_history['broker'][0]['old_price'] == '900.000 €'
 
 
+def test_teambim_parser_reads_current_immobilien_slugs():
+    overview = '''<a href="/immobilien/feed/">Feed</a>
+    <a href="/immobilien/wohnung-muenchen">Wohnung</a>
+    <a href="/leistungen/immobilien">Leistungen</a>'''
+    detail = '''<title>Helle Wohnung in München</title>
+    <div>Kaufpreis: 875.000 €</div><div>Wohnfläche: 80 m²</div>
+    <div>Ort: München</div>'''
+
+    def fake_fetch(url, timeout=20):
+        return detail if '/immobilien/wohnung-muenchen' in url else overview
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_teambim_listings_retry_alt()
+
+    assert rows == [{
+        'title': 'Helle Wohnung in München',
+        'price': '875.000 €',
+        'area_sqm': '80',
+        'location': 'München',
+        'link': 'https://team-bim.de/immobilien/wohnung-muenchen',
+    }]
+
+
 def test_static_property_card_parser_extracts_listing_fields():
     html = '''<article><h2>Stilvolle Wohnung in München</h2>
     <a href="/immobilien/objekt/?oid=1">Objekt ansehen</a>

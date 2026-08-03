@@ -152,7 +152,8 @@ The Function host storage uses the Function App's system-assigned managed
 identity with Blob, Queue, and Table data roles. No storage account key is
 placed in Function settings or Key Vault.
 
-The GitHub build installs the Python dependency from
+The GitHub build uses Python 3.12, matching the Function App runtime, and
+installs the Python dependency from
 `timer_function/requirements.txt` into
 `timer_function/.python_packages/lib/site-packages` before the package is
 mounted. This is required for Linux Consumption deployments using
