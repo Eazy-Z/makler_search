@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import re
+import ssl
 import time
 import gzip
 import zlib
@@ -119,7 +120,7 @@ def blob_urlopen(request, timeout=20):
             time.sleep(1 << attempt)
 
 
-def read_listings_blob():
+def read_listings_blob(include_stale=False):
     if not LISTINGS_BLOB_ENABLED:
         return None
     request = urllib.request.Request(listings_blob_url(), headers=blob_request_headers())
@@ -128,7 +129,7 @@ def read_listings_blob():
     generated_at = payload.get('generated_at', 0)
     if isinstance(generated_at, str):
         generated_at = 0
-    if time.time() - generated_at >= LISTINGS_REFRESH_SECONDS:
+    if not include_stale and time.time() - generated_at >= LISTINGS_REFRESH_SECONDS:
         return None
     return payload.get('listings'), generated_at
 
@@ -164,6 +165,74 @@ def format_blob_error(error):
             details += f' ({error_code})'
         return details
     return f'{type(error).__name__}: blob request failed'
+
+
+def listing_identity(broker_key, listing):
+    link = clean_text(str((listing or {}).get('link', ''))).rstrip('/').lower()
+    return broker_key, link or clean_text(str((listing or {}).get('title', ''))).lower()
+
+
+def enrich_listing_history(previous, current, broker_success, now=None):
+    now = time.time() if now is None else now
+    result = {}
+    for broker_key, old_rows in (previous or {}).items():
+        for row in old_rows or []:
+            if not isinstance(row, dict):
+                continue
+            identity = listing_identity(broker_key, row)
+            if identity[1]:
+                result[identity] = dict(row)
+
+    for broker_key, rows in (current or {}).items():
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            identity = listing_identity(broker_key, row)
+            if not identity[1]:
+                continue
+            old = result.get(identity, {})
+            first_seen_at = old.get('first_seen_at') or now
+            item = dict(row)
+            item.update({
+                'first_seen_at': first_seen_at,
+                'last_seen_at': now,
+                'note': '',
+            })
+            result[identity] = item
+
+    for broker_key, was_successful in (broker_success or {}).items():
+        if not was_successful:
+            continue
+        current_ids = {
+            listing_identity(broker_key, row)
+            for row in (current or {}).get(broker_key, [])
+            if isinstance(row, dict)
+        }
+        for identity, row in list(result.items()):
+            if identity[0] != broker_key or identity in current_ids:
+                continue
+            row = dict(row)
+            row['note'] = 'Gelöscht'
+            row['is_deleted'] = True
+            result[identity] = row
+
+    history = {}
+    for (broker_key, _identity), row in result.items():
+        first_seen_at = row.get('first_seen_at') or now
+        try:
+            age_days = max(0, int((now - float(first_seen_at)) // 86400))
+        except (TypeError, ValueError):
+            first_seen_at = now
+            age_days = 0
+        row['first_seen_at'] = first_seen_at
+        row['age_days'] = age_days
+        row.setdefault('last_seen_at', first_seen_at)
+        row.setdefault('note', '')
+        row['is_deleted'] = row.get('note') == 'Gelöscht'
+        history.setdefault(broker_key, []).append(row)
+    for broker_key in set((previous or {}).keys()) | set((current or {}).keys()) | set((broker_success or {}).keys()):
+        history.setdefault(broker_key, [])
+    return history
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -1791,14 +1860,13 @@ def fetch_jalea_listings():
     seen = set()
 
     try:
-        req = urllib.request.Request(JALEA_URL, headers={'User-Agent': 'Mozilla/5.0'})
-        overview_html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+        overview_html = fetch_html(JALEA_URL, timeout=20)
     except Exception:
         return listings
 
-    for match in re.finditer(r'<article class="frymo-listing-item[^>]*>(.*?)</article>', overview_html, re.S | re.I):
+    for match in re.finditer(r'<article\b[^>]*class=["\'][^"\']*frymo-listing-item[^"\']*["\'][^>]*>(.*?)</article>', overview_html, re.S | re.I):
         block = match.group(1)
-        title_match = re.search(r"<h3 class='frymo-listing-title'>\s*<a href='([^']+)'[^>]*>(.*?)</a>", block, re.S | re.I)
+        title_match = re.search(r'<h3\b[^>]*class=["\'][^"\']*frymo-listing-title[^"\']*["\'][^>]*>\s*<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', block, re.S | re.I)
         if not title_match:
             continue
 
@@ -1813,8 +1881,7 @@ def fetch_jalea_listings():
         price = ''
         area = ''
         try:
-            req = urllib.request.Request(href, headers={'User-Agent': 'Mozilla/5.0'})
-            detail_html = urllib.request.urlopen(req, timeout=20).read().decode('utf-8', 'ignore')
+            detail_html = fetch_html(href, timeout=20)
 
             price_match = re.search(r'data-key="kaufpreis"[^>]*>\s*<div class="frymo-data-item-label">.*?</div>\s*<div class="frymo-data-item-value">(.*?)</div>', detail_html, re.S | re.I)
             if price_match:
@@ -3416,6 +3483,41 @@ def fetch_sozius_listings_retry_alt():
     except Exception:
         return []
     return parse_property_link_cards(SOZIUS_URL, html, r'/detailseite/')
+
+
+def fetch_hallinger_listings_retry_alt():
+    try:
+        html = fetch_html(HALLINGER_URL)
+    except Exception:
+        try:
+            request = urllib.request.Request(HALLINGER_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(request, timeout=20, context=ssl._create_unverified_context()) as response:
+                html = response.read().decode('utf-8', 'ignore')
+        except Exception:
+            return []
+    listings = []
+    seen = set()
+    for match in re.finditer(r'<h2\b[^>]*>(.*?)</h2>(.*?)(?=<h2\b|</body>|$)', html, re.I | re.S):
+        title = clean_text(match.group(1))
+        block = match.group(2)
+        link_match = re.search(r'href=["\']([^"\']*immobilien-details\.php\?[^"\']+)["\']', block, re.I)
+        price_match = re.search(r'Kaufpreis\s*:\s*([0-9.]+(?:,[0-9]{2})?)\s*(?:€|&euro;)', block, re.I)
+        if not link_match or not price_match or len(title) < 8:
+            continue
+        area_match = re.search(r'(?:Wohn|Nutz|Grundstücks?)fläche\s*:?\s*([0-9.,]+)\s*(?:m²|qm)', block, re.I)
+        location = extract_location_from_title(title)
+        add_listing(
+            listings,
+            seen,
+            title,
+            price_match.group(1),
+            area_match.group(1) if area_match else '',
+            location if is_clean_location_text(location) else UNKNOWN_LOCATION,
+            urljoin(HALLINGER_URL, link_match.group(1)),
+        )
+        if len(listings) >= 12:
+            break
+    return listings
 
 
 def fetch_wesoly_listings_retry_alt():
@@ -5469,6 +5571,7 @@ BROKER_SOURCES = [
 
 
 ZERO_RESULT_RETRY_FETCHERS = {
+    'engel': lambda: fetch_source_specific_with_embedded_retry(ENGEL_URLS[0], r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(expose|immobilie|objekt)'),
     'heidinger': fetch_heidinger_listings_source_specific,
     'imothek': fetch_imothek_listings_source_specific,
     'mar': fetch_mar_listings_source_specific,
@@ -5487,6 +5590,9 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'gerschlauer': fetch_gerschlauer_listings_retry_alt,
     'dahler': fetch_dahler_listings_retry_alt,
     'krimbacher': fetch_krimbacher_listings_retry_alt,
+    'hallinger': fetch_hallinger_listings_retry_alt,
+    'muenchnerimmobilien': lambda: fetch_source_specific_with_embedded_retry(MUENCHNER_IMMOBILIEN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(Haeuser-zum-Kauf|cmd=expose|objekt|immobilie|detail|expose)'),
+    'feuerlein': lambda: fetch_source_specific_with_embedded_retry(FEUERLEIN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilienangebot|angebote|objekt|immobilie|detail|expose)'),
     'klatt': fetch_klatt_listings_source_specific,
     'ft': fetch_ft_listings_retry_alt,
     'tesch': lambda: fetch_source_specific_broker_listings(TESCH_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)'),
@@ -5632,11 +5738,21 @@ def fetch_listings(force_refresh=False):
             LISTINGS_CACHE_UPDATED_AT = generated_at
             return LISTINGS_CACHE
 
+    previous_listings = LISTINGS_CACHE or {}
+    if not previous_listings:
+        try:
+            persisted = read_listings_blob(include_stale=True)
+        except Exception:
+            persisted = None
+        if persisted is not None:
+            previous_listings = persisted[0] or {}
+
     listings = {}
+    broker_success = {}
     max_workers = min(8, len(BROKER_SOURCES)) or 1
     executor = ThreadPoolExecutor(max_workers=max_workers)
     futures = {
-        executor.submit(lambda key=key, fetcher=fetcher: fetch_broker_rows_with_retry(key, fetcher)): key
+        executor.submit(lambda key=key, fetcher=fetcher: fetch_broker_rows_with_status(key, fetcher)): key
         for key, fetcher in BROKER_SOURCES
     }
     try:
@@ -5649,9 +5765,12 @@ def fetch_listings(force_refresh=False):
         for future in completed_futures:
             key = futures[future]
             try:
-                listings[key] = future.result()
+                rows, error_message = future.result()
+                listings[key] = rows
+                broker_success[key] = not error_message and key not in BLOCKED_BROKER_REASONS
             except Exception:
                 listings[key] = []
+                broker_success[key] = False
     except FuturesTimeoutError:
         pass
     finally:
@@ -5663,10 +5782,12 @@ def fetch_listings(force_refresh=False):
     for key, _fetcher in BROKER_SOURCES:
         listings.setdefault(key, [])
 
+    listings = enrich_listing_history(previous_listings, listings, broker_success)
+
     LISTINGS_CACHE = listings
     LISTINGS_CACHE_TIME = now
     LISTINGS_CACHE_UPDATED_AT = time.time()
-    if any(listings.values()):
+    if listings:
         try:
             write_listings_blob(listings, LISTINGS_CACHE_UPDATED_AT)
         except Exception as error:
@@ -5705,6 +5826,15 @@ def run_async_refresh():
     global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
 
     listings = {}
+    previous_listings = LISTINGS_CACHE or {}
+    if not previous_listings:
+        try:
+            persisted = read_listings_blob(include_stale=True)
+        except Exception:
+            persisted = None
+        if persisted is not None:
+            previous_listings = persisted[0] or {}
+    broker_success = {}
     executor = ThreadPoolExecutor(max_workers=min(8, len(BROKER_SOURCES)) or 1)
     futures = {
         executor.submit(
@@ -5723,6 +5853,7 @@ def run_async_refresh():
                 error_message = f'{type(error).__name__}: {error}'
 
             listings[key] = rows
+            broker_success[key] = not error_message and key not in BLOCKED_BROKER_REASONS
             with REFRESH_STATE_LOCK:
                 REFRESH_STATE['brokers'][key] = {
                     'status': 'error' if error_message else ('done' if rows else 'empty'),
@@ -5735,10 +5866,12 @@ def run_async_refresh():
     for key, _fetcher in BROKER_SOURCES:
         listings.setdefault(key, [])
 
+    listings = enrich_listing_history(previous_listings, listings, broker_success)
+
     updated_at = time.time()
     blob_updated_at = LISTINGS_CACHE_UPDATED_AT
     storage_error = None
-    if LISTINGS_BLOB_ENABLED and any(listings.values()):
+    if LISTINGS_BLOB_ENABLED and listings:
         try:
             write_listings_blob(listings, updated_at)
             blob_updated_at = updated_at
@@ -5858,6 +5991,7 @@ class Handler(BaseHTTPRequestHandler):
         .search { width: 100%; border: 1px solid #cbd5e1; border-radius: 999px; padding: 12px 16px; font-size: 15px; background: white; box-sizing: border-box; }
         .numeric-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
         .numeric-filter { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; background: white; box-sizing: border-box; }
+        .sort-select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; background: white; }
         .tabs { display: flex; gap: 10px; margin-bottom: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
         .tab { border: 0; padding: 10px 16px; border-radius: 999px; background: #e2e8f0; cursor: pointer; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
         .refresh-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -5885,6 +6019,12 @@ class Handler(BaseHTTPRequestHandler):
                 <input id="min-area" class="numeric-filter" type="number" min="0" step="1" placeholder="Wohnfläche von (m²)">
                 <input id="max-area" class="numeric-filter" type="number" min="0" step="1" placeholder="Wohnfläche bis (m²)">
             </div>
+            <label class="meta" for="listing-sort">Sortierung
+                <select id="listing-sort" class="sort-select">
+                    <option value="first-newest">Erst gefunden: neu nach alt</option>
+                    <option value="first-oldest">Erst gefunden: alt nach neu</option>
+                </select>
+            </label>
             <div class="refresh-actions">
                 <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
                 <p id="last-updated" class="result-summary"></p>
@@ -5906,6 +6046,7 @@ class Handler(BaseHTTPRequestHandler):
         const maxPriceInput = document.getElementById('max-price');
         const minAreaInput = document.getElementById('min-area');
         const maxAreaInput = document.getElementById('max-area');
+        const listingSortInput = document.getElementById('listing-sort');
         const refreshAllButton = document.getElementById('refresh-all');
         const lastUpdated = document.getElementById('last-updated');
         const root = document.getElementById('listings');
@@ -5916,6 +6057,7 @@ class Handler(BaseHTTPRequestHandler):
         const cacheTtlMs = 5 * 60 * 1000;
         let brokerQuery = '';
         let listingQuery = '';
+        let listingSort = 'first-newest';
         let brokerStatuses = {};
         let refreshPollTimer = null;
 
@@ -5993,7 +6135,7 @@ class Handler(BaseHTTPRequestHandler):
             const maxPrice = readFilterValue(maxPriceInput);
             const minArea = readFilterValue(minAreaInput);
             const maxArea = readFilterValue(maxAreaInput);
-            return listings.filter(item => {
+            const filtered = listings.filter(item => {
                 const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
                 if (query && !haystack.includes(query)) {
                     return false;
@@ -6013,6 +6155,11 @@ class Handler(BaseHTTPRequestHandler):
                     return false;
                 }
                 return true;
+            });
+            return filtered.sort((left, right) => {
+                const leftDate = Number(left.first_seen_at) || 0;
+                const rightDate = Number(right.first_seen_at) || 0;
+                return listingSort === 'first-oldest' ? leftDate - rightDate : rightDate - leftDate;
             });
         }
 
@@ -6054,6 +6201,21 @@ class Handler(BaseHTTPRequestHandler):
                     broker.textContent = `Makler: ${formatLabel(item.brokerKey)}`;
                 }
 
+                const age = document.createElement('div');
+                age.className = 'meta';
+                const ageDays = Number(item.age_days);
+                age.textContent = Number.isFinite(ageDays)
+                    ? `Zum ersten Mal gefunden vor ${ageDays} ${ageDays === 1 ? 'Tag' : 'Tagen'}`
+                    : 'Erstfunddatum nicht verfügbar';
+
+                const note = document.createElement('div');
+                note.className = 'meta';
+                if (item.note) {
+                    note.textContent = `Notiz: ${item.note}`;
+                    note.style.color = '#b91c1c';
+                    note.style.fontWeight = '600';
+                }
+
                 const linkRow = document.createElement('div');
                 linkRow.className = 'meta';
                 const link = document.createElement('a');
@@ -6069,7 +6231,7 @@ class Handler(BaseHTTPRequestHandler):
                 } catch (error) {
                 }
 
-                card.append(title, price, area, location, broker, linkRow);
+                card.append(title, price, area, location, broker, age, note, linkRow);
                 root.append(card);
             });
         }
@@ -6258,6 +6420,11 @@ class Handler(BaseHTTPRequestHandler):
 
         [minPriceInput, maxPriceInput, minAreaInput, maxAreaInput].forEach(input => {
             input.addEventListener('input', () => renderActiveListings());
+        });
+
+        listingSortInput.addEventListener('change', event => {
+            listingSort = event.target.value;
+            renderActiveListings();
         });
 
         refreshAllButton.addEventListener('click', () => {

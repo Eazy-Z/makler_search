@@ -6,6 +6,8 @@ Local scraper and listing browser for multiple real-estate brokers.
 
 - Scrapes several broker websites and groups results by broker
 - Caches listing data for 5 minutes
+- Keeps listing history with first-found date, age in days, and a `Gelöscht` note when a successfully scraped broker no longer publishes an offer
+- Allows sorting offers from newest to oldest first-found date
 - Serves a simple browser UI with broker and listing filters
 
 ## Run
@@ -24,8 +26,8 @@ On Azure App Service, open `https://maklerapp.azurewebsites.net/`.
 
 ## Azure Blob Storage
 
-The app persists the latest listings in `latest.json` in the `maklerapp`
-container of `maklerappstorageaccount`. The App Service must have a system-
+The app persists the current and historical listings in `latest.json` in the
+`maklerapp` container of `maklerappstorageaccount`. The App Service must have a system-
 assigned managed identity with the `Storage Blob Data Contributor` role on
 that storage account. The app reads a fresh blob for up to three hours and
 refreshes it from the broker sites when it expires.

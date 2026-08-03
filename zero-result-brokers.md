@@ -1,5 +1,16 @@
 # Zero-result broker audit
 
+## Current direct-network status (2026-08-03)
+
+The original direct-network inventory contained 23 zero-result brokers. Since then:
+
+- `jalea`: repaired; live fetch returns 5 listings.
+- `engel`: repaired; the registered embedded retry returns 12 listings.
+- `hallinger`: source-specific parser and fixture are implemented, but the live domain currently has a TLS certificate failure, so live extraction is not confirmed.
+- `mar`, `dahler`, `krimbacher`, `egger`, `neuesnest`, `dalexis`, `ausdemhaeuschen`, `feuerlein`, `lebenstraum`, `joseffrei`, `reischl`, and `gattinger`: retry paths exist, but no additional parser change is justified without a stable live payload or fixture.
+- `bunzco`, `cki`, `windisch`, `harinali`, and `muenchnerimmobilien`: blocked or unreachable during the direct audit; treat as access problems, not parser failures.
+- `weber`, `andreasschmid`, and `wandl`: reachable but no stable listing payload was identified; keep unresolved until a public feed or representative HTML fixture is available.
+
 Audit status: local Python fetches are not a reliable source of zero-result evidence in this environment. The configured HTTPS proxy returned `403 Tunnel connection failed` for some domains, while the existing fetchers convert most other fetch failures into an empty list. The run therefore reported 137/137 zero-result brokers, but that is not a valid production inventory.
 
 ## Verified parser repairs

@@ -13,6 +13,51 @@ def test_format_price_handles_schneider_style_values():
     assert app.format_price('2.495.000 €') == '2.495.000 €'
 
 
+def test_listing_history_tracks_first_seen_age_and_deleted_note():
+    previous = {
+        'broker': [{
+            'title': 'Altes Haus',
+            'price': '900.000 €',
+            'area_sqm': '120',
+            'location': 'München',
+            'link': 'https://example.com/expose/1',
+            'first_seen_at': 1,
+        }],
+    }
+
+    history = app.enrich_listing_history(previous, {'broker': []}, {'broker': True}, now=86401)
+
+    row = history['broker'][0]
+    assert row['age_days'] == 1
+    assert row['note'] == 'Gelöscht'
+    assert row['is_deleted'] is True
+
+
+def test_listing_history_clears_deleted_note_when_listing_returns():
+    previous = {
+        'broker': [{
+            'title': 'Altes Haus',
+            'link': 'https://example.com/expose/1',
+            'first_seen_at': 1,
+            'note': 'Gelöscht',
+            'is_deleted': True,
+        }],
+    }
+
+    history = app.enrich_listing_history(
+        previous,
+        {'broker': [{'title': 'Altes Haus', 'link': 'https://example.com/expose/1'}]},
+        {'broker': True},
+        now=172801,
+    )
+
+    row = history['broker'][0]
+    assert row['first_seen_at'] == 1
+    assert row['age_days'] == 2
+    assert row['note'] == ''
+    assert row['is_deleted'] is False
+
+
 def test_static_property_card_parser_extracts_listing_fields():
     html = '''<article><h2>Stilvolle Wohnung in München</h2>
     <a href="/immobilien/objekt/?oid=1">Objekt ansehen</a>
@@ -47,6 +92,51 @@ def test_firstplace_parser_uses_each_static_offer_block():
     assert rows[0]['price'] == '585.000 €'
     assert rows[0]['area_sqm'] == '88'
     assert rows[1]['price'] == '719.000 €'
+
+
+def test_jalea_parser_accepts_current_frymo_markup():
+    overview = '''<article class="frymo-listing-item"><h3 class="frymo-listing-title">
+    <a href="/immobilie/test/">Wohnung in Alling</a></h3>
+    <div class="frymo-listing-location"><i></i>Alling</div></article>'''
+    detail = '''<div data-key="kaufpreis"><div class="frymo-data-item-label">Kaufpreis</div>
+    <div class="frymo-data-item-value">495.000 EUR</div></div>
+    <div data-key="wohnflaeche"><div class="frymo-data-item-label">Wohnfläche</div>
+    <div class="frymo-data-item-value">82 m²</div></div>'''
+
+    def fake_fetch(url, timeout=20):
+        return detail if '/immobilie/' in url else overview
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_jalea_listings()
+
+    assert len(rows) == 1
+    assert rows[0]['price'] == '495.000 €'
+    assert rows[0]['area_sqm'] == '82'
+
+
+def test_hallinger_parser_reads_static_detail_cards():
+    html = '''<article><h2>Wohnung mit Balkon</h2>
+    <a href="/immobilien-details.php?id=4020195&va=0">Details</a>
+    <p>Kaufpreis: 395.000,00 €</p><p>Wohnfläche: 72 m²</p></article>'''
+
+    with patch.object(app, 'fetch_html', return_value=html):
+        rows = app.fetch_hallinger_listings_retry_alt()
+
+    assert len(rows) == 1
+    assert rows[0]['price'] == '395.000 €'
+    assert rows[0]['link'].endswith('id=4020195&va=0')
+
+
+def test_engel_zero_result_retry_uses_embedded_source_parser():
+    with patch.object(app, 'fetch_source_specific_with_embedded_retry', return_value=[{'title': 'Wohnung', 'price': '500.000 €'}]) as retry:
+        rows = app.ZERO_RESULT_RETRY_FETCHERS['engel']()
+
+    assert rows
+    retry.assert_called_once_with(
+        app.ENGEL_URLS[0],
+        r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)',
+        r'(expose|immobilie|objekt)',
+    )
 
 
 def test_new_sources_return_data():
