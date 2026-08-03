@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json
 import re
-import ssl
 import time
 import gzip
 import zlib
@@ -40,7 +39,7 @@ REFRESH_STATE = {
 CACHE_TTL_SECONDS = 5 * 60
 LISTINGS_REFRESH_SECONDS = 3 * 60 * 60
 LISTINGS_FETCH_TIMEOUT_SECONDS = 120
-REFRESH_COOLDOWN_SECONDS = 0
+REFRESH_COOLDOWN_SECONDS = 15 * 60
 LAST_REFRESH_REQUEST_TIME = 0
 INTERNAL_REFRESH_TOKEN = os.environ.get('INTERNAL_REFRESH_TOKEN', '')
 LISTINGS_BLOB_CONTAINER_URL = os.environ.get(
@@ -3638,12 +3637,7 @@ def fetch_hallinger_listings_retry_alt():
     try:
         html = fetch_html(HALLINGER_URL)
     except Exception:
-        try:
-            request = urllib.request.Request(HALLINGER_URL, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(request, timeout=20, context=ssl._create_unverified_context()) as response:
-                html = response.read().decode('utf-8', 'ignore')
-        except Exception:
-            return []
+        return []
     listings = []
     seen = set()
     for match in re.finditer(r'<h2\b[^>]*>(.*?)</h2>(.*?)(?=<h2\b|</body>|$)', html, re.I | re.S):
@@ -6826,16 +6820,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             now = time.time()
-            if now - LAST_REFRESH_REQUEST_TIME < REFRESH_COOLDOWN_SECONDS:
+            with REFRESH_STATE_LOCK:
+                elapsed = now - LAST_REFRESH_REQUEST_TIME
+                retry_after = REFRESH_COOLDOWN_SECONDS - elapsed
+                if retry_after <= 0:
+                    LAST_REFRESH_REQUEST_TIME = now
+
+            if retry_after > 0:
                 body = json.dumps({'ok': False, 'error': 'Refresh is temporarily unavailable'}).encode('utf-8')
                 self.send_response(429)
-                self.send_header('Retry-After', str(REFRESH_COOLDOWN_SECONDS))
+                self.send_header('Retry-After', str(max(1, int(retry_after) + 1)))
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            LAST_REFRESH_REQUEST_TIME = now
             start_async_refresh()
             body = json.dumps({
                 'ok': True,

@@ -7,11 +7,13 @@ param location string = 'westus3'
 param tenantId string = '6bb6fc0a-c0e2-425e-813d-0ae4d8235cd9'
 
 @description('Entra application client ID used by App Service Authentication.')
+@minLength(1)
 param entraClientId string
 
 @secure()
 @description('Client secret for the Entra application. Store this in Key Vault for production use.')
-param entraClientSecret string = ''
+@minLength(1)
+param entraClientSecret string
 
 @description('Globally unique name for the listing storage account.')
 param listingsStorageAccountName string = 'maklerappv2listings'
