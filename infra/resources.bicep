@@ -306,6 +306,10 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       ftpsState: 'Disabled'
       appSettings: concat([
         {
+          name: 'AzureWebJobsStorage__accountName'
+          value: functionStorageAccount.name
+        }
+        {
           name: 'AzureWebJobsStorage__credential'
           value: 'managedidentity'
         }
