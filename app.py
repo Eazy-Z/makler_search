@@ -21,6 +21,7 @@ TARGET_URL = 'https://www.starnbergersee-immobilien.de/Haeuser-zum-Kauf.htm'
 
 LISTINGS_CACHE = None
 LISTINGS_CACHE_TIME = 0
+LISTINGS_CACHE_UPDATED_AT = None
 CACHE_TTL_SECONDS = 5 * 60
 LISTINGS_REFRESH_SECONDS = 3 * 60 * 60
 LISTINGS_FETCH_TIMEOUT_SECONDS = 120
@@ -119,14 +120,14 @@ def read_listings_blob():
         generated_at = 0
     if time.time() - generated_at >= LISTINGS_REFRESH_SECONDS:
         return None
-    return payload.get('listings')
+    return payload.get('listings'), generated_at
 
 
-def write_listings_blob(listings):
+def write_listings_blob(listings, generated_at=None):
     if not LISTINGS_BLOB_ENABLED:
         return
     payload = json.dumps({
-        'generated_at': time.time(),
+        'generated_at': generated_at if generated_at is not None else time.time(),
         'listings': listings,
     }).encode('utf-8')
     headers = blob_request_headers()
@@ -5464,7 +5465,7 @@ def fetch_broker_rows_with_retry(key: str, fetcher):
 
 
 def fetch_listings(force_refresh=False):
-    global LISTINGS_CACHE, LISTINGS_CACHE_TIME
+    global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
     now = time.time()
     if not force_refresh and LISTINGS_CACHE is not None and now - LISTINGS_CACHE_TIME < CACHE_TTL_SECONDS:
         return LISTINGS_CACHE
@@ -5480,8 +5481,10 @@ def fetch_listings(force_refresh=False):
             )
             persisted_listings = None
         if persisted_listings is not None:
+            persisted_listings, generated_at = persisted_listings
             LISTINGS_CACHE = persisted_listings
             LISTINGS_CACHE_TIME = now
+            LISTINGS_CACHE_UPDATED_AT = generated_at
             return LISTINGS_CACHE
 
     listings = {}
@@ -5515,9 +5518,10 @@ def fetch_listings(force_refresh=False):
 
     LISTINGS_CACHE = listings
     LISTINGS_CACHE_TIME = now
+    LISTINGS_CACHE_UPDATED_AT = time.time()
     if any(listings.values()):
         try:
-            write_listings_blob(listings)
+            write_listings_blob(listings, LISTINGS_CACHE_UPDATED_AT)
         except Exception as error:
             LOGGER.error(
                 'Could not write listings blob %s: %s',
@@ -5545,6 +5549,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps(listings).encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
+            if LISTINGS_CACHE_UPDATED_AT is not None:
+                self.send_header('X-Listings-Updated-At', str(LISTINGS_CACHE_UPDATED_AT))
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -5569,7 +5575,7 @@ class Handler(BaseHTTPRequestHandler):
         .numeric-filter { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; background: white; box-sizing: border-box; }
         .tabs { display: flex; gap: 10px; margin-bottom: 4px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
         .tab { border: 0; padding: 10px 16px; border-radius: 999px; background: #e2e8f0; cursor: pointer; font-weight: 600; white-space: nowrap; flex: 0 0 auto; }
-        .refresh-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .refresh-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
         .refresh-button { border: 1px solid #94a3b8; border-radius: 8px; padding: 10px 14px; background: white; color: #0f172a; cursor: pointer; font-weight: 600; }
         .refresh-button:disabled { cursor: wait; opacity: 0.6; }
         .result-summary { color: #64748b; font-size: 14px; margin: 0 0 12px; }
@@ -5596,6 +5602,7 @@ class Handler(BaseHTTPRequestHandler):
             </div>
             <div class="refresh-actions">
                 <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
+                <p id="last-updated" class="result-summary"></p>
             </div>
             <div id="tabs" class="tabs"></div>
         </div>
@@ -5615,6 +5622,7 @@ class Handler(BaseHTTPRequestHandler):
         const minAreaInput = document.getElementById('min-area');
         const maxAreaInput = document.getElementById('max-area');
         const refreshAllButton = document.getElementById('refresh-all');
+        const lastUpdated = document.getElementById('last-updated');
         const root = document.getElementById('listings');
         const allListingsTab = '__all__';
         let activeTab = allListingsTab;
@@ -5667,6 +5675,15 @@ class Handler(BaseHTTPRequestHandler):
             const label = document.createElement('span');
             label.textContent = 'Lade Inserate...';
             root.append(spinner, label);
+        }
+
+        function renderLastUpdated(timestamp) {
+            const value = Number(timestamp);
+            if (!Number.isFinite(value)) {
+                lastUpdated.textContent = '';
+                return;
+            }
+            lastUpdated.textContent = `Letzte Aktualisierung: ${new Date(value * 1000).toLocaleString('de-DE')}`;
         }
 
         function formatLabel(key) {
@@ -5863,6 +5880,7 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 cachedData = data;
                 cacheTimestamp = now;
+                renderLastUpdated(res.headers.get('X-Listings-Updated-At'));
                 renderTabs(cachedData);
                 renderActiveListings();
             } catch (err) {
@@ -5882,6 +5900,7 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 cachedData = result.listings;
                 cacheTimestamp = Date.now();
+                renderLastUpdated(result.updated_at);
                 renderTabs(cachedData);
                 renderActiveListings();
             } catch (err) {
@@ -5952,7 +5971,11 @@ class Handler(BaseHTTPRequestHandler):
             LAST_REFRESH_REQUEST_TIME = now
             try:
                 listings = fetch_listings(force_refresh=True)
-                body = json.dumps({'ok': True, 'listings': listings}).encode('utf-8')
+                body = json.dumps({
+                    'ok': True,
+                    'listings': listings,
+                    'updated_at': LISTINGS_CACHE_UPDATED_AT,
+                }).encode('utf-8')
                 self.send_response(200)
             except Exception as error:
                 LOGGER.error('Global listings refresh failed: %s', format_blob_error(error))
