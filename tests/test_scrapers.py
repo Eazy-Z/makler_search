@@ -58,6 +58,36 @@ def test_listing_history_clears_deleted_note_when_listing_returns():
     assert row['is_deleted'] is False
 
 
+def test_listing_history_keeps_old_price_when_price_changes():
+    previous = {
+        'broker': [{
+            'title': 'Haus',
+            'price': '900.000 €',
+            'link': 'https://example.com/expose/1',
+            'first_seen_at': 1,
+        }],
+    }
+
+    history = app.enrich_listing_history(
+        previous,
+        {'broker': [{'title': 'Haus', 'price': '875.000 €', 'link': 'https://example.com/expose/1'}]},
+        {'broker': True},
+        now=86401,
+    )
+
+    row = history['broker'][0]
+    assert row['old_price'] == '900.000 €'
+    assert row['price'] == '875.000 €'
+
+    next_history = app.enrich_listing_history(
+        history,
+        {'broker': [{'title': 'Haus', 'price': '875.000 €', 'link': 'https://example.com/expose/1'}]},
+        {'broker': True},
+        now=172801,
+    )
+    assert next_history['broker'][0]['old_price'] == '900.000 €'
+
+
 def test_static_property_card_parser_extracts_listing_fields():
     html = '''<article><h2>Stilvolle Wohnung in München</h2>
     <a href="/immobilien/objekt/?oid=1">Objekt ansehen</a>

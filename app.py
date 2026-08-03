@@ -193,6 +193,14 @@ def enrich_listing_history(previous, current, broker_success, now=None):
             old = result.get(identity, {})
             first_seen_at = old.get('first_seen_at') or now
             item = dict(row)
+            old_price = clean_text(str(old.get('price', '')))
+            new_price = clean_text(str(item.get('price', '')))
+            if old_price and new_price and old_price != new_price:
+                item['old_price'] = old_price
+            elif old.get('old_price') and old_price == new_price:
+                item['old_price'] = old['old_price']
+            else:
+                item.pop('old_price', None)
             item.update({
                 'first_seen_at': first_seen_at,
                 'last_seen_at': now,
@@ -6335,7 +6343,16 @@ class Handler(BaseHTTPRequestHandler):
 
                 const price = document.createElement('div');
                 price.className = 'meta';
-                price.textContent = `Preis: ${item.price || 'nicht verfügbar'}`;
+                price.textContent = 'Preis: ';
+                if (item.old_price && item.price && item.old_price !== item.price) {
+                    const oldPrice = document.createElement('s');
+                    oldPrice.textContent = item.old_price;
+                    const newPrice = document.createElement('strong');
+                    newPrice.textContent = ` ${item.price}`;
+                    price.append(oldPrice, newPrice);
+                } else {
+                    price.append(document.createTextNode(item.price || 'nicht verfügbar'));
+                }
 
                 const area = document.createElement('div');
                 area.className = 'meta';
