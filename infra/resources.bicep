@@ -13,6 +13,8 @@ param keyVaultName string
 param monthlyBudgetAmount int
 param budgetAlertEmail string
 param backendRefreshUrl string
+@secure()
+param backendRefreshToken string
 param emailSmtpHost string
 param emailSmtpPort string
 param emailSmtpUsername string
@@ -135,6 +137,14 @@ resource smtpPasswordValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (
   }
 }
 
+resource backendRefreshTokenValue 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(backendRefreshToken)) {
+  name: 'backend-refresh-token'
+  parent: keyVault
+  properties: {
+    value: backendRefreshToken
+  }
+}
+
 resource webPlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: '${webAppName}-plan'
   location: location
@@ -179,6 +189,9 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
       ], !empty(entraClientSecret) ? [{
         name: 'ENTRA_CLIENT_SECRET'
         value: '${keyVaultReference}${entraClientSecretValue!.properties.secretUriWithVersion})'
+      }] : [], !empty(backendRefreshToken) ? [{
+        name: 'INTERNAL_REFRESH_TOKEN'
+        value: '${keyVaultReference}${backendRefreshTokenValue!.properties.secretUriWithVersion})'
       }] : [])
     }
   }
@@ -194,6 +207,9 @@ resource webAppAuth 'Microsoft.Web/sites/config@2022-09-01' = if (!empty(entraCl
     globalValidation: {
       requireAuthentication: true
       unauthenticatedClientAction: 'RedirectToLoginPage'
+      excludedPaths: [
+        '/internal/refresh'
+      ]
     }
     identityProviders: {
       azureActiveDirectory: {
@@ -292,6 +308,14 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'BACKEND_REFRESH_URL'
           value: backendRefreshUrl
+        }
+        {
+          name: 'INTERNAL_REFRESH_TOKEN'
+          value: '${keyVaultReference}${backendRefreshTokenValue!.properties.secretUriWithVersion})'
+        }
+        {
+          name: 'AUTO_REFRESH_TIME_ZONE'
+          value: 'Europe/Berlin'
         }
         {
           name: 'EMAIL_SMTP_HOST'

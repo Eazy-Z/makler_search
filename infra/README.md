@@ -11,6 +11,7 @@ resource group `MaklerApp_v2` in `westus3`:
 - Blob RBAC scoped to the private listing container
 - Key Vault-backed Entra, SMTP, and Function Storage secrets
 - App Service Authentication with the supplied Entra tenant
+- Timer Function that triggers the protected App Service refresh endpoint hourly during daytime
 - Monthly Resource Group budget with 80% and 100% email alerts
 
 ## Deploy
@@ -53,6 +54,10 @@ SMTP settings through App Settings, which allows a low-cost external SMTP
 relay or an existing mail provider to be used. Configure at least five and at
 most ten unique valid addresses in `emailRecipients`; the Function code must
 validate this before sending and should use BCC.
+
+Set the GitHub Actions secret `AZURE_BACKEND_REFRESH_TOKEN` to a long random
+value. The deployment stores it in Key Vault and configures it for both the
+Web App and Timer Function. The Function is deployed from `timer_function/`.
 
 Do not commit `main.parameters.json`, SMTP passwords, or Entra client secrets.
 Use deployment-time secure parameters or Key Vault references for production.

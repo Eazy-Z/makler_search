@@ -38,6 +38,7 @@ LISTINGS_REFRESH_SECONDS = 3 * 60 * 60
 LISTINGS_FETCH_TIMEOUT_SECONDS = 120
 REFRESH_COOLDOWN_SECONDS = 0
 LAST_REFRESH_REQUEST_TIME = 0
+INTERNAL_REFRESH_TOKEN = os.environ.get('INTERNAL_REFRESH_TOKEN', '')
 LISTINGS_BLOB_CONTAINER_URL = os.environ.get(
     'LISTINGS_BLOB_CONTAINER_URL',
     'https://maklerappstorageaccount.blob.core.windows.net/maklerapp',
@@ -6616,7 +6617,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         global LAST_REFRESH_REQUEST_TIME
-        if self.path == '/api/listings/refresh-all':
+        if self.path == '/internal/refresh':
+            expected_token = INTERNAL_REFRESH_TOKEN
+            authorization = self.headers.get('Authorization', '')
+            if not expected_token or authorization != f'Bearer {expected_token}':
+                body = json.dumps({'ok': False, 'error': 'Unauthorized'}).encode('utf-8')
+                self.send_response(401)
+            else:
+                started = start_async_refresh()
+                body = json.dumps({
+                    'ok': True,
+                    'active': True,
+                    'started': started,
+                    'status': refresh_status_payload(),
+                }).encode('utf-8')
+                self.send_response(202)
+        elif self.path == '/api/listings/refresh-all':
             if not request_origin_allowed(self):
                 body = json.dumps({'ok': False, 'error': 'Origin not allowed'}).encode('utf-8')
                 self.send_response(403)

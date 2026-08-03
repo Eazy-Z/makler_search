@@ -38,6 +38,9 @@
     "backendRefreshUrl": {
       "value": "https://<web-app-name>.azurewebsites.net/internal/refresh"
     },
+    "backendRefreshToken": {
+      "value": "<provide-at-deployment-time>"
+    },
     "emailSmtpHost": {
       "value": ""
     },

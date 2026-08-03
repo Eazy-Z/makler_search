@@ -37,6 +37,10 @@ param budgetAlertEmail string = ''
 @description('Backend URL called by the timer function after deployment.')
 param backendRefreshUrl string = 'https://maklerapp-v2.azurewebsites.net/internal/refresh'
 
+@secure()
+@description('Shared secret used by the timer function to call the internal refresh endpoint.')
+param backendRefreshToken string
+
 @description('SMTP host used by the timer function. No Azure email resource is provisioned to keep recurring costs low.')
 param emailSmtpHost string = ''
 
@@ -71,6 +75,7 @@ module platform './resources.bicep' = {
     monthlyBudgetAmount: monthlyBudgetAmount
     budgetAlertEmail: budgetAlertEmail
     backendRefreshUrl: backendRefreshUrl
+    backendRefreshToken: backendRefreshToken
     emailSmtpHost: emailSmtpHost
     emailSmtpPort: emailSmtpPort
     emailSmtpUsername: emailSmtpUsername

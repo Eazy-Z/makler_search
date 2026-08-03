@@ -57,6 +57,7 @@ jobs:
     needs: build
     env:
       AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME || 'maklerapp-v2' }}
+      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'maklerapp-v2-timer' }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'MaklerApp_v2' }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westus3' }}
       AZURE_MONTHLY_BUDGET_AMOUNT: ${{ vars.AZURE_MONTHLY_BUDGET_AMOUNT || '5' }}
@@ -87,11 +88,15 @@ jobs:
       - name: Validate required deployment secrets
         env:
           ENTRA_CLIENT_SECRET: ${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}
-        run: test -n "$ENTRA_CLIENT_SECRET"
+          BACKEND_REFRESH_TOKEN: ${{ secrets.AZURE_BACKEND_REFRESH_TOKEN }}
+        run: |
+          test -n "$ENTRA_CLIENT_SECRET"
+          test -n "$BACKEND_REFRESH_TOKEN"
 
       - name: Prepare deployment parameters
         env:
           DEPLOY_ENTRA_CLIENT_SECRET: ${{ secrets.AZURE_ENTRA_CLIENT_SECRET }}
+          DEPLOY_BACKEND_REFRESH_TOKEN: ${{ secrets.AZURE_BACKEND_REFRESH_TOKEN }}
           DEPLOY_SMTP_PASSWORD: ${{ secrets.AZURE_SMTP_PASSWORD }}
         run: |
           python - <<'PY'
@@ -103,6 +108,7 @@ jobs:
               'webAppName': os.environ['AZURE_WEBAPP_NAME'],
               'entraClientId': os.environ['AZURE_ENTRA_CLIENT_ID'],
               'entraClientSecret': os.environ['DEPLOY_ENTRA_CLIENT_SECRET'],
+              'backendRefreshToken': os.environ['DEPLOY_BACKEND_REFRESH_TOKEN'],
               'keyVaultName': os.environ['AZURE_KEY_VAULT_NAME'],
               'monthlyBudgetAmount': int(os.environ['AZURE_MONTHLY_BUDGET_AMOUNT']),
               'budgetAlertEmail': os.environ['AZURE_BUDGET_ALERT_EMAIL'],
@@ -137,4 +143,10 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: 'Production'
           startup-command: 'python app.py'
+
+      - name: Deploy timer Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
+          package: './timer_function'
           

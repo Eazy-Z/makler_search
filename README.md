@@ -6,6 +6,7 @@ Local scraper and listing browser for multiple real-estate brokers.
 
 - Scrapes several broker websites and groups results by broker
 - Caches listing data for 5 minutes
+- The Azure Timer Function refreshes listings asynchronously at the start of every hour from 06:00 through 19:00
 - Keeps listing history with first-found date, age in days, and a `Gelöscht` note when a successfully scraped broker no longer publishes an offer
 - Allows sorting offers from newest to oldest first-found date
 - Serves a simple browser UI with broker and listing filters
@@ -31,6 +32,11 @@ The app persists the current and historical listings in `latest.json` in the
 assigned managed identity with the `Storage Blob Data Contributor` role on
 that storage account. The app reads a fresh blob for up to three hours and
 refreshes it from the broker sites when it expires.
+
+The Azure Timer Function calls the protected `/internal/refresh` endpoint at
+the start of every UTC hour. The Function only forwards the refresh during
+06:00 through 19:00 in `Europe/Berlin`; automatic refreshes are paused from
+20:00 through 05:00. Manual refreshes remain available.
 
 The storage account must also allow the App Service to reach its public Blob
 endpoint. In Storage account -> Networking, set `Public network access` to
