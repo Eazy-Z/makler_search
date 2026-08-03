@@ -838,9 +838,22 @@ def is_generic_navigation_title(title: str) -> bool:
     normalized = clean_text(title).lower()
     blocked = {
         'angebote',
+        'portfolio items',
+        'verkauf',
+        'alle',
+        'doppelhaus',
+        'bauvorbescheiden',
         'bewertung',
         'bewerten',
         'details anzeigen',
+        'detailseite',
+        'details zur immobilie',
+        'objektdetails ansehen',
+        'pdf',
+        'neu',
+        'preisreduktion',
+        'top angebot',
+        'sehr',
         'hier klicken zum expose zu gelangen',
         'hier klicken zum exposé zu gelangen',
         'kontakt',
@@ -906,7 +919,7 @@ def is_clean_location_text(value: str) -> bool:
         return False
     if text.count(' ') >= 3 and re.search(r'(?i)\b(lage|von|mit|und)\b', text):
         return False
-    if re.search(r'(?i)\b(objektinformationen|objektnummer|objekte|immobilien|kontakt|verf[uü]gbar|bestlage|begehrter|kaufpreis|zimmer|flaeche|wohnfl|ca|herzlich|zur[uü]ck|expose|exposé|details?)\b', text):
+    if re.search(r'(?i)\b(objektinformationen|objektnummer|objekte|immobilien|immobilienangebote|kontakt|verf[uü]gbar|bestlage|top\s+lage|begehrter|kaufpreis|zimmer|flaeche|wohnfl|ca|herzlich|zur[uü]ck|expose|exposé|details?|detailseite|pdf|informationen|portfolio\s+items|verkauf|doppelhaus|bauvorbescheiden|högerstraße)\b', text):
         return False
     if re.search(r'(?i)^(der|die|das)\s+[A-ZÄÖÜa-zäöüß\-]+$', text):
         return False
@@ -920,6 +933,36 @@ def extract_location_from_link(link: str) -> str:
     path = unquote((parsed.path or '').strip('/'))
     if not path:
         return ''
+
+    hostname = (parsed.hostname or '').lower()
+    slug_text = path.lower().replace('_', '-').replace('.', '-')
+    if 'aundowohnbau.de' in hostname:
+        if re.search(r'germering', slug_text):
+            return 'Germering'
+        if re.search(r'muenchen|münchen|giesing|laim|schwabing', slug_text):
+            return 'München'
+    if 'elvira-immo.de' in hostname:
+        for candidate in ('germering', 'maxvorstadt', 'harlaching', 'bogenhausen'):
+            if candidate in slug_text:
+                return candidate.title()
+    if 'martina-schwarz-immobilien.de' in hostname and path.lower().endswith('.pdf'):
+        for candidate in ('groebenzell', 'perlach', 'gilching', 'ismaning', 'unterhaching', 'giesing'):
+            if candidate in slug_text:
+                return decode_slug_words(candidate).title()
+    if 'sqmeter.de' in hostname:
+        city_match = re.search(r'(?:verkauf|miete)/(?:muenchen|münchen)-([a-z-]+)', slug_text)
+        if city_match:
+            return 'München'
+    if 'seebauer-immobilien.de' in hostname and re.search(r'(?:^|-)muenchen(?:-|$)', slug_text):
+        return 'München'
+    if 'mueller-groscurth-immobilien.de' in hostname:
+        for candidate in ('neuhausen', 'obergiesing', 'muenchen', 'münchen', 'germering', 'gauting'):
+            if candidate in slug_text:
+                return decode_slug_words(candidate).title()
+    if 'riedl-makler.de' in hostname:
+        for candidate in ('pasing', 'giesing', 'gauting', 'muenchen', 'münchen'):
+            if candidate in slug_text:
+                return decode_slug_words(candidate).title()
 
     segments = [seg for seg in path.split('/') if seg]
     if not segments:
@@ -966,6 +1009,10 @@ def extract_location_from_title(title: str) -> str:
     text = clean_text(title or '')
     if not text:
         return ''
+
+    for candidate in ('Neubiberg', 'Ottobrunn', 'Kaufbeuren', 'Waldtrudering', 'Steinhöring', 'Kirchheim', 'Perlach', 'Maxhof'):
+        if re.search(rf'\b{re.escape(candidate)}\b', text, re.I):
+            return candidate
 
     # Some brokers use city-only titles, e.g. "Unterhaching".
     if re.fullmatch(r'[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]{2,}(?:/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]{2,})?', text):
@@ -1289,18 +1336,19 @@ def parse_link_cards(base_url: str, html: str, href_hint: str = r'(immobilie|obj
         if not re.search(r'/(?:immobilie|immobilien|objekt|objekte|expose|exposé|angebote)/|cmd=expose|obj-|angebotsverfahren|expose|\.pdf$', href.lower()):
             continue
         # Parse forward-only context so a later card cannot inherit price/location from the previous card.
-        chunk = html[match.start():match.start() + 2200]
+        chunk_size = 6000 if 'reichenberger-immobilien.de' in base_url else 2200
+        chunk = html[match.start():match.start() + chunk_size]
 
         title = clean_text(match.group(2))
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             title_match = re.search(r'<h2[^>]*>(.*?)</h2>|<h3[^>]*>(.*?)</h3>', chunk, re.S | re.I)
             if title_match:
                 title = clean_text(title_match.group(1) or title_match.group(2) or '')
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             slug_title = normalize_title_from_link(href)
             if is_valid_title(slug_title):
                 title = slug_title
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             for payload in re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', chunk, re.I | re.S):
                 try:
                     data = json.loads(payload.strip())
@@ -1337,7 +1385,12 @@ def parse_link_cards(base_url: str, html: str, href_hint: str = r'(immobilie|obj
         area_match = re.search(r'Wohnfl(?:ä|ae)che\s*:?\s*(?:ca\.?\s*)?([0-9.,]+)', chunk_text, re.I)
         if not area_match:
             area_match = re.search(r'([0-9.,]+)\s*m²', chunk_text, re.I)
-        location_match = re.search(r'(?:Ort|Lage|Standort|Stadt)\s*:?\s*([^<\n|]+)', chunk, re.I)
+        address_match = re.search(
+            r'<[^>]+class=["\'][^"\']*\bes-address\b[^"\']*["\'][^>]*>(.*?)</[^>]+>',
+            chunk,
+            re.I | re.S,
+        )
+        location_match = re.search(r'>\s*(?:Ort|Lage|Standort|Stadt)\s*:?\s*([^<\n|]+)', chunk, re.I)
 
         # Require concrete listing facts to avoid classifying nav/service links as listings.
         if not (price_match or area_match):
@@ -1345,7 +1398,9 @@ def parse_link_cards(base_url: str, html: str, href_hint: str = r'(immobilie|obj
 
         price = price_match.group(1) if price_match else ''
         area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
-        location = clean_text(location_match.group(1)) if location_match else extract_location_text(chunk_text, '')
+        location = clean_text(address_match.group(1)) if address_match else ''
+        if not location:
+            location = clean_text(location_match.group(1)) if location_match else extract_location_text(chunk_text, '')
         add_listing(listings, seen, title, price, area, location, href)
 
     return listings[:12]
@@ -3636,6 +3691,51 @@ def fetch_multi_page_retry(base_url: str, page_hint: str):
     return rows[:12]
 
 
+def fetch_detail_page_listings(base_url: str, link_hint: str):
+    try:
+        root_html = fetch_html(base_url)
+    except Exception:
+        return []
+
+    links = []
+    seen_links = set()
+    for href_raw in re.findall(r'href=["\']([^"\']+)["\']', root_html, re.I):
+        href = urljoin(base_url, clean_text(href_raw))
+        if not re.search(link_hint, href, re.I) or href in seen_links:
+            continue
+        if re.search(r'/archiv(?:/|$)', href, re.I):
+            continue
+        seen_links.add(href)
+        links.append(href)
+
+    listings = []
+    seen = set()
+    for href in links[:18]:
+        try:
+            detail_html = fetch_html(href)
+        except Exception:
+            continue
+        detail_text = clean_text(detail_html)
+        title = extract_page_title(detail_html)
+        title = re.sub(r'\s*\|\s*(?:MUELLER\s*&\s*ENGLISCH|Windhausen Partner).*$', '', title, flags=re.I).strip(' -|')
+        if not is_valid_title(title):
+            title = normalize_title_from_link(href)
+        price_match = re.search(r'([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*(?:€|EUR)', detail_text, re.I)
+        if not price_match:
+            continue
+        location_match = re.search(r'>\s*Ort\s*</[^>]+>\s*(?:<[^>]+>\s*)+([^<]+)', detail_html, re.I | re.S)
+        location = clean_text(location_match.group(1)) if location_match else ''
+        if not location:
+            location = extract_location_from_json_ld(detail_html)
+        if not location:
+            location = extract_location_text(detail_text, '')
+        area = extract_area_text(detail_text)
+        add_listing(listings, seen, title, price_match.group(1), area, location, href)
+        if len(listings) >= 12:
+            break
+    return listings
+
+
 def iter_json_ld_nodes(node):
     if isinstance(node, dict):
         yield node
@@ -3715,9 +3815,9 @@ def parse_property_link_cards(base_url: str, html: str, link_pattern: str):
         chunk = html[max(0, match.start() - 1800):min(len(html), match.end() + 1800)]
         chunk_text = clean_text(chunk)
         title = extract_title(chunk)
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             title = clean_text(re.sub(r'<[^>]+>', ' ', match.group(2)))
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             title = normalize_title_from_link(href)
         if not is_valid_title(title):
             continue
@@ -4751,7 +4851,7 @@ def fetch_zippold_listings():
 
 
 def fetch_muellergroscurth_listings():
-    return fetch_generic_broker_listings(MUELLER_GROSCURTH_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')
+    return fetch_detail_page_listings(MUELLER_GROSCURTH_URL, r'/immobilien/')
 
 
 def fetch_bunzco_listings():
@@ -4787,7 +4887,7 @@ def fetch_wohnref_listings():
 
 
 def fetch_herrmann_listings():
-    return fetch_source_specific_broker_listings(HERRMANN_URL, r'(immobilie|objekt|expose|angebot|kauf)', r'(angebote|immobilie|objekt|expose)')
+    return fetch_detail_page_listings(HERRMANN_URL, r'cmd=searchDetails')
 
 
 def fetch_schmidtmuenchen_listings():
@@ -5612,15 +5712,16 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'isarestate': fetch_isarestate_listings_retry_alt,
     'imothek': fetch_imothek_listings_livewire_retry_alt,
     'heidtmann': lambda: fetch_zero_broker_detail_crawl(HEIDTMANN_URL),
-    'muellerenglisch': lambda: fetch_multi_page_retry(MUELLER_ENGLISCH_URL, r'(immobilien|wohnungen|anlageimmobilien|gewerbeobjekte|xhtml)'),
+    'muellerenglisch': lambda: fetch_detail_page_listings(MUELLER_ENGLISCH_URL, r'immobilien-details\.xhtml'),
     'neuesnest': lambda: fetch_zero_broker_detail_crawl(NEUESNEST_URL),
     'wurmseder': fetch_wurmseder_listings_retry_alt,
     'duerrenberger': lambda: fetch_zero_broker_detail_crawl(DUERRENBERGER_URL),
     'vonrodenhausen': fetch_vonrodenhausen_listings_retry_alt,
     'martinaschwarz': lambda: fetch_zero_broker_detail_crawl(MARTINA_SCHWARZ_URL),
     'friedlmaier': lambda: fetch_zero_broker_detail_crawl(FRIEDLMAIER_URL),
-    'windhausen': lambda: fetch_zero_broker_detail_crawl(WINDHAUSEN_URL),
+    'windhausen': lambda: fetch_detail_page_listings(WINDHAUSEN_URL, r'/detailseite/'),
     'riedl': fetch_riedl_listings_retry_alt,
+    'herrmann': lambda: fetch_zero_broker_detail_crawl(HERRMANN_URL),
     'zippold': lambda: fetch_zero_broker_detail_crawl(ZIPPOLD_URL),
     'bunzco': lambda: fetch_zero_broker_detail_crawl(BUNZCO_URL),
     'drescher': lambda: fetch_zero_broker_detail_crawl(DRESCHER_URL),

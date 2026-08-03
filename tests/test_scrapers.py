@@ -78,6 +78,58 @@ def test_static_property_card_parser_extracts_listing_fields():
     }]
 
 
+def test_reichenberger_parser_prefers_structured_address_over_url_slug():
+    html = '''<a class="es-listings__image__link"
+    href="/immobilie/neuwertige-wohnung-in-ruhiger-lage-mit-balkon/">Bild</a>
+    <h3 class="es-listing__title"><a href="/immobilie/neuwertige-wohnung-in-ruhiger-lage-mit-balkon/">
+    Neuwertige Wohnung in ruhiger Lage mit Balkon</a></h3>
+    <span class="es-price">749.000 €</span>
+    <div class="es-address es-listing--hide-on-grid">München &#8211; Großhadern</div>'''
+
+    rows = app.parse_link_cards(
+        'https://www.reichenberger-immobilien.de/immobilien/',
+        html,
+        r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)',
+    )
+
+    assert len(rows) == 1
+    assert rows[0]['location'] == 'München – Großhadern'
+
+
+def test_source_specific_location_fallbacks_use_listing_slugs():
+    assert app.extract_location_from_link(
+        'https://aundowohnbau.de/immobilien/steueroptimierte-kapitalanlage-in-muenchen-schwabing/'
+    ) == 'München'
+    assert app.extract_location_from_link(
+        'https://www.elvira-immo.de/immobilienangebote/elvira-germering-wohnung-er4287'
+    ) == 'Germering'
+    assert app.extract_location_from_link(
+        'https://martina-schwarz-immobilien.de/wp-content/uploads/2025/01/1462-Expose-Groebenzell.pdf'
+    ) == 'Gröbenzell'
+
+
+def test_detail_parser_prefers_explicit_ort_over_company_jsonld_address():
+    root = '<a href="/immobilien/objekt-1">Objekt</a>'
+    detail = '''<title>Objekt 1</title><div>Ort</div><div><strong>85630 Grasbrunn</strong></div>
+    <span>Kaufpreis: 750.000 €</span><span>Wohnfläche: 120 m²</span>'''
+
+    def fake_fetch(url, timeout=20):
+        return detail if '/objekt-1' in url else root
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_detail_page_listings(
+            'https://mueller-groscurth-immobilien.de/immobilien/',
+            r'/immobilien/',
+        )
+
+    assert rows[0]['location'] == '85630 Grasbrunn'
+
+
+def test_non_location_labels_are_rejected():
+    for value in ('Portfolio Items', 'Verkauf', 'Doppelhaus', 'Bauvorbescheiden'):
+        assert not app.is_clean_location_text(value)
+
+
 def test_firstplace_parser_uses_each_static_offer_block():
     html = '''<h2>FIRSTPLACE - Wohnung in Aubing</h2>
     <p>Altaubing, 81245 München</p><p>585.000 €</p><p>88 m²</p>
