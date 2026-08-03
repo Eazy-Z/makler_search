@@ -3502,34 +3502,64 @@ def fetch_cki_listings_retry_alt():
 
 
 def fetch_hoser_listings_retry_alt():
-    candidate_urls = [
+    try:
+        html = fetch_html(HOSER_URL)
+    except Exception:
+        return []
+    rows = parse_property_link_cards(
         HOSER_URL,
-        urljoin(HOSER_URL, '/immobilien/'),
-        urljoin(HOSER_URL, '/angebote/'),
-        urljoin(HOSER_URL, '/objekte/'),
-    ]
+        html,
+        r'/(?:immobilien|objekte|angebote)/[^/?#]+(?:/|\.html?)?$',
+    )[:12]
+    for row in rows:
+        row['title'] = re.sub(r'\s+(?:Zum Objekt|Objekt ansehen|Details?)$', '', row.get('title', ''), flags=re.I)
+    return rows
 
-    rows = []
-    for url in candidate_urls:
+
+def fetch_maurer_listings():
+    try:
+        html = fetch_html(MAURER_URL)
+    except Exception:
+        return []
+
+    detail_links = []
+    seen_links = set()
+    for href_raw in re.findall(r'href=["\']([^"\']+)', html, re.I):
+        href = urljoin(MAURER_URL, clean_text(href_raw))
+        path = normalize_path(href)
+        if href in seen_links or is_non_listing_url(href):
+            continue
+        if not re.search(r'(?:/angebote/|/immobilien/|cmd=(?:expose|searchDetails))', href, re.I):
+            continue
+        if path in {'/angebote', '/immobilien'} or re.search(r'(?:impressum|kontakt|datenschutz|ueber-uns)', href, re.I):
+            continue
+        seen_links.add(href)
+        detail_links.append(href)
+
+    listings = []
+    seen = set()
+    for href in detail_links[:18]:
         try:
-            page_html = fetch_html(url)
+            detail_html = fetch_html(href)
         except Exception:
-            page_html = ''
-        if page_html:
-            rows = merge_listing_rows(rows, parse_price_blocks_without_links(url, page_html))
-            if len(rows) >= 12:
-                return rows[:12]
-        rows = merge_listing_rows(rows, fetch_no_price_detail_retry(
-            url,
-            r'(immobilie|objekt|angebot|kauf|wohnen|haus|wohnung|expose|detail)',
-            r'(immobilie|objekt|kaufpreis|preis|wohnfl(?:ä|ae)che|lage|standort|zimmer|m²|qm)',
-        ))
-        if len(rows) >= 12:
-            return rows[:12]
-
-    if rows:
-        return rows[:12]
-    return fetch_zero_broker_detail_crawl(HOSER_URL)
+            continue
+        detail_text = clean_text(detail_html)
+        title = extract_page_title(detail_html)
+        if not is_valid_title(title) or is_generic_navigation_title(title):
+            continue
+        price_match = re.search(r'([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*(?:€|EUR)', detail_text, re.I)
+        if not price_match:
+            continue
+        area = extract_area_text(detail_text)
+        explicit_location = re.search(r'(?:Ort|Lage|Standort)\s*:\s*([^<\n]+)', detail_text, re.I)
+        location = clean_text(explicit_location.group(1)) if explicit_location else extract_location_text(detail_text, '')
+        location = re.sub(r'(?i)M(?:u|ue|ü)nchen[- ]Frstenried', 'München-Frstenried', location)
+        if not is_clean_location_text(location):
+            location = extract_location_from_title(title)
+        if not is_clean_location_text(location):
+            location = UNKNOWN_LOCATION
+        add_listing(listings, seen, title, price_match.group(1), area, location, href)
+    return listings[:12]
 
 
 def fetch_sozius_listings_retry_alt():
@@ -5265,28 +5295,47 @@ def fetch_wolf_listings():
     return merge_listing_rows(rows, extras)
 
 
+def parse_rsi_listing_blocks(base_url, html):
+    listings = []
+    seen = set()
+    blocks = re.findall(
+        r'<article\b[^>]*>.*?</article>|<li\b[^>]*class=["\'][^"\']*(?:object|immobil|angebot|property)[^"\']*["\'][^>]*>.*?</li>',
+        html,
+        re.I | re.S,
+    )
+    for block in blocks:
+        link_match = re.search(r'<a\b[^>]*href=["\']([^"\']+)["\']', block, re.I)
+        if not link_match:
+            continue
+        href = urljoin(base_url, clean_text(link_match.group(1)))
+        if is_non_listing_url(href) or not re.search(r'(?:immobilie|objekt|expose|angebot)', href, re.I):
+            continue
+        heading_match = re.search(r'<h[1-4]\b[^>]*>(.*?)</h[1-4]>', block, re.I | re.S)
+        title = clean_text(heading_match.group(1)) if heading_match else extract_title(block)
+        block_text = clean_text(block)
+        price_match = re.search(
+            r'(?:Kaufpreis|Preis)\s*:?[ ]*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*(?:€|EUR)',
+            block_text,
+            re.I,
+        )
+        area_match = re.search(r'Wohnfl(?:ä|ae)che\s*:?[ ]*(?:ca\.?\s*)?([0-9.,]+)\s*(?:m²|qm)', block_text, re.I)
+        location_match = re.search(r'(?:Ort|Lage|Standort)\s*:?[ ]*([^<|\n]+)', block, re.I)
+        location = clean_text(location_match.group(1)) if location_match else extract_location_text(block_text, '')
+        if not price_match or not is_valid_title(title) or not is_clean_location_text(location):
+            continue
+        add_listing(listings, seen, title, price_match.group(1), area_match.group(1) if area_match else '', location, href)
+    return listings[:12]
+
+
 def fetch_rsi_listings():
-    rows = fetch_source_specific_broker_listings(
-        RSI_EINFAMILIEN_URL,
-        r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
-        r'(einfamilienhaeuser|mehrfamilienhauser|wohnungen|cmd=expose|objekt|immobilie)',
-    )
-    rows = merge_listing_rows(
-        rows,
-        fetch_source_specific_broker_listings(
-            RSI_MEHRFAMILIEN_URL,
-            r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
-            r'(einfamilienhaeuser|mehrfamilienhauser|wohnungen|cmd=expose|objekt|immobilie)',
-        ),
-    )
-    return merge_listing_rows(
-        rows,
-        fetch_source_specific_broker_listings(
-            RSI_WOHNUNGEN_URL,
-            r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
-            r'(einfamilienhaeuser|mehrfamilienhauser|wohnungen|cmd=expose|objekt|immobilie)',
-        ),
-    )
+    rows = []
+    for page_url in (RSI_EINFAMILIEN_URL, RSI_MEHRFAMILIEN_URL, RSI_WOHNUNGEN_URL):
+        try:
+            html = fetch_html(page_url)
+        except Exception:
+            continue
+        rows = merge_listing_rows(rows, parse_rsi_listing_blocks(page_url, html))
+    return rows[:12]
 
 
 def fetch_joseffrei_listings():

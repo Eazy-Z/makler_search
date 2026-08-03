@@ -179,6 +179,46 @@ def test_hallinger_parser_reads_static_detail_cards():
     assert rows[0]['link'].endswith('id=4020195&va=0')
 
 
+def test_hoser_parser_rejects_homepage_and_navigation_links():
+    page = '''<nav><a href="/impressum/">Impressum</a><a href="/angebote/">Angebote</a></nav>
+    <article><h2>Villa in Gauting</h2><a href="/angebote/villa-in-gauting/">Zum Objekt</a>
+    <p>Kaufpreis: 1.200.000 €</p><p>Wohnfläche: 140 m²</p></article>'''
+
+    with patch.object(app, 'fetch_html', return_value=page):
+        rows = app.fetch_hoser_listings_retry_alt()
+
+    assert len(rows) == 1
+    assert rows[0]['title'] == 'Villa in Gauting'
+    assert '/angebote/villa-in-gauting/' in rows[0]['link']
+
+
+def test_maurer_parser_repairs_missing_umlaut_and_rejects_impressum():
+    overview = '<a href="/Angebote.htm?cmd=expose&id=1">Objekt</a><a href="/Impressum.htm">Impressum</a>'
+    detail = '''<title>Haus in München</title><div>Kaufpreis: 1.100.000 €</div>
+    <div>Wohnfläche: 120 m²</div><div>Ort: Muenchen-Frstenried</div>'''
+
+    def fake_fetch(url, timeout=20):
+        return overview if url == app.MAURER_URL else detail
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_maurer_listings()
+
+    assert len(rows) == 1
+    assert rows[0]['location'] == 'München-Frstenried'
+
+
+def test_rsi_parser_keeps_location_inside_current_card_only():
+    page = '''<article><h3>Haus Gauting</h3><a href="/immobilie/haus-gauting">Objekt</a>
+    <div>Ort: Gauting b. München</div><div>Wohnfläche: 150 m²</div><div>Kaufpreis: 1.300.000 €</div></article>
+    <article><h3>Haus ohne Ort</h3><a href="/immobilie/haus-ohne-ort">Objekt</a>
+    <div>Wohnfläche: 130 m²</div><div>Kaufpreis: 1.200.000 €</div></article>'''
+
+    rows = app.parse_rsi_listing_blocks(app.RSI_EINFAMILIEN_URL, page)
+
+    assert len(rows) == 1
+    assert rows[0]['location'] == 'Gauting b. München'
+
+
 def test_engel_zero_result_retry_uses_embedded_source_parser():
     with patch.object(app, 'fetch_source_specific_with_embedded_retry', return_value=[{'title': 'Wohnung', 'price': '500.000 €'}]) as retry:
         rows = app.ZERO_RESULT_RETRY_FETCHERS['engel']()
