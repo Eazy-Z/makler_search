@@ -118,6 +118,42 @@ def test_listing_history_keeps_old_price_when_price_changes():
     assert next_history['broker'][0]['old_price'] == '900.000 €'
 
 
+def test_refresh_changes_detects_new_and_price_changed_listings():
+    previous = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '900.000 €',
+            'link': 'https://example.com/expose/1',
+        }],
+    }
+    current = {
+        'broker': [
+            {
+                'title': 'Bestehendes Haus',
+                'price': '875.000 €',
+                'link': 'https://example.com/expose/1',
+            },
+            {
+                'title': 'Neues Haus',
+                'price': '700.000 €',
+                'link': 'https://example.com/expose/2',
+            },
+        ],
+    }
+
+    changes = app.refresh_changes(previous, current)
+
+    assert [item['title'] for item in changes['new_listings']] == ['Neues Haus']
+    assert [item['title'] for item in changes['price_changed_listings']] == ['Bestehendes Haus']
+    assert changes['price_changed_listings'][0]['old_price'] == '900.000 €'
+
+
+def test_send_change_email_skips_empty_change_report():
+    from timer_function.function_app import send_change_email
+
+    assert send_change_email({'new_listings': [], 'price_changed_listings': []}) is False
+
+
 def test_teambim_parser_reads_current_immobilien_slugs():
     overview = '''<a href="/immobilien/feed/">Feed</a>
     <a href="/immobilien/wohnung-muenchen">Wohnung</a>

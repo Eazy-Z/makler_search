@@ -31,6 +31,10 @@ REFRESH_STATE = {
     'updated_at': None,
     'brokers': {},
     'listings': None,
+    'changes': {
+        'new_listings': [],
+        'price_changed_listings': [],
+    },
     'error': None,
 }
 CACHE_TTL_SECONDS = 5 * 60
@@ -242,6 +246,37 @@ def enrich_listing_history(previous, current, broker_success, now=None):
     for broker_key in set((previous or {}).keys()) | set((current or {}).keys()) | set((broker_success or {}).keys()):
         history.setdefault(broker_key, [])
     return history
+
+
+def refresh_changes(previous, current):
+    previous_by_identity = {}
+    for broker_key, rows in (previous or {}).items():
+        for row in rows or []:
+            if isinstance(row, dict):
+                previous_by_identity[listing_identity(broker_key, row)] = row
+
+    new_listings = []
+    price_changed_listings = []
+    for broker_key, rows in (current or {}).items():
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            identity = listing_identity(broker_key, row)
+            if not identity[1]:
+                continue
+            previous_row = previous_by_identity.get(identity)
+            item = dict(row)
+            item['broker'] = broker_key
+            if previous_row is None or previous_row.get('is_deleted'):
+                new_listings.append(item)
+            elif clean_text(str(previous_row.get('price', ''))) != clean_text(str(row.get('price', ''))):
+                item['old_price'] = clean_text(str(previous_row.get('price', '')))
+                price_changed_listings.append(item)
+
+    return {
+        'new_listings': new_listings,
+        'price_changed_listings': price_changed_listings,
+    }
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -6098,6 +6133,10 @@ def refresh_status_payload(include_listings=False):
                 for key, status in REFRESH_STATE['brokers'].items()
             },
             'error': REFRESH_STATE['error'],
+            'changes': {
+                key: [dict(item) for item in items]
+                for key, items in REFRESH_STATE['changes'].items()
+            },
         }
         if include_listings:
             payload['listings'] = REFRESH_STATE['listings']
@@ -6148,6 +6187,7 @@ def run_async_refresh():
     for key, _fetcher in BROKER_SOURCES:
         listings.setdefault(key, [])
 
+    changes = refresh_changes(previous_listings, listings)
     listings = enrich_listing_history(previous_listings, listings, broker_success)
 
     updated_at = time.time()
@@ -6169,6 +6209,7 @@ def run_async_refresh():
             'active': False,
             'updated_at': blob_updated_at,
             'listings': listings,
+            'changes': changes,
             'error': storage_error,
         })
 
@@ -6186,6 +6227,10 @@ def start_async_refresh():
                 for key, _fetcher in BROKER_SOURCES
             },
             'listings': None,
+            'changes': {
+                'new_listings': [],
+                'price_changed_listings': [],
+            },
             'error': None,
         })
 
@@ -6228,6 +6273,21 @@ def request_origin_allowed(handler):
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/internal/refresh-status':
+            expected_token = INTERNAL_REFRESH_TOKEN
+            authorization = self.headers.get('Authorization', '')
+            if not expected_token or authorization != f'Bearer {expected_token}':
+                body = json.dumps({'ok': False, 'error': 'Unauthorized'}).encode('utf-8')
+                self.send_response(401)
+            else:
+                body = json.dumps(refresh_status_payload()).encode('utf-8')
+                self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path == '/api/listings/refresh-status':
             payload = refresh_status_payload(include_listings=not REFRESH_STATE['active'])
             body = json.dumps(payload).encode('utf-8')
