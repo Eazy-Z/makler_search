@@ -48,12 +48,20 @@ jobs:
           from function_app import app
 
           functions = app.get_functions()
-          assert len(functions) == 1, functions
-          binding = functions[0].get_raw_bindings()[0]
-          if isinstance(binding, str):
-              binding = json.loads(binding)
-          assert binding['type'] == 'timerTrigger', binding
-          assert binding['schedule'] == '0 0 * * * *', binding
+          bindings = []
+          for function in functions:
+              binding = function.get_raw_bindings()[0]
+              if isinstance(binding, str):
+                  binding = json.loads(binding)
+              bindings.append(binding)
+
+          timer_bindings = [item for item in bindings if item['type'] == 'timerTrigger']
+          http_bindings = [item for item in bindings if item['type'] == 'httpTrigger']
+          assert len(timer_bindings) == 1, bindings
+          assert len(http_bindings) == 1, bindings
+          assert timer_bindings[0]['schedule'] == '0 0 * * * *', timer_bindings
+          assert http_bindings[0]['route'] == 'test-email', http_bindings
+          assert http_bindings[0]['authLevel'] == 'FUNCTION', http_bindings
           print('timer binding smoke test ok')
           PY
                 
