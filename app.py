@@ -6673,7 +6673,8 @@ class Handler(BaseHTTPRequestHandler):
         }
 
         function csvCell(value) {
-            return `"${String(value ?? '').replace(/"/g, '""')}"`;
+            const text = value === null || value === undefined ? '' : String(value);
+            return `"${text.replace(/"/g, '""')}"`;
         }
 
         function exportCurrentView() {
