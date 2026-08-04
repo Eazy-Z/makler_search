@@ -271,6 +271,18 @@ resource functionPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   }
 }
 
+resource functionAppInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: functionAppName
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    RetentionInDays: 30
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
+  }
+}
+
 resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
@@ -341,6 +353,14 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'AUTO_REFRESH_TIME_ZONE'
           value: 'Europe/Berlin'
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: functionAppInsights.properties.ConnectionString
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: functionAppInsights.properties.InstrumentationKey
         }
         {
           name: 'EMAIL_SMTP_HOST'

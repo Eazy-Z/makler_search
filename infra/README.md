@@ -10,6 +10,7 @@ resource group `MaklerApp_v2` in `westus3`:
 - System-assigned identity and `Storage Blob Data Contributor` for the Web App
 - Blob RBAC scoped to the private listing container
 - Key Vault-backed Entra, SMTP, and Function Storage secrets
+- Application Insights logging for the Function App
 - App Service Authentication with the supplied Entra tenant
 - Timer Function that triggers the protected App Service refresh endpoint hourly during daytime
 - Monthly Resource Group budget with 80% and 100% email alerts
@@ -156,6 +157,21 @@ scheduled timer, and administrative endpoints remain platform-protected.
 The Function host storage uses the Function App's system-assigned managed
 identity with Blob, Queue, and Table data roles. No storage account key is
 placed in Function settings or Key Vault.
+
+Application Insights is deployed as a workspace-independent component named
+after the Function App and connected through the standard
+`APPLICATIONINSIGHTS_CONNECTION_STRING` and
+`APPINSIGHTS_INSTRUMENTATIONKEY` settings. Function execution logs are
+available in the Application Insights **Logs** view, for example:
+
+```kusto
+union traces, requests, exceptions
+| where timestamp > ago(7d)
+| where operation_Name == 'refresh_listings'
+  or tostring(customDimensions) contains 'Function.refresh_listings'
+| project timestamp, itemType, message, operation_Name, success, resultCode, severityLevel
+| order by timestamp desc
+```
 
 The GitHub build uses Python 3.12, matching the Function App runtime, and
 installs the Python dependency from
