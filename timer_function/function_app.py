@@ -172,11 +172,6 @@ def test_refresh_listings(timer: func.TimerRequest) -> None:
     if os.environ.get('EMAIL_TEST_TIMER_ENABLED', '').lower() != 'true':
         return
 
-    now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE))
-    if not is_refresh_hour(now):
-        logging.info('Email test refresh skipped at %s.', now.isoformat())
-        return
-
     changes = {
         'new_listings': [{
             'title': 'TESTTIMER - synthetisches Inserat',

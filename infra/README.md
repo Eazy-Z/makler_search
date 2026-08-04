@@ -19,7 +19,8 @@ az functionapp config appsettings delete \
 ```
 
 The test mail has the subject prefix `TESTTIMER -` and is sent at most once
-per minute during the configured active hours.
+per minute around the clock. The production timer remains restricted to the
+configured active hours.
 # Azure infrastructure
 
 This Bicep deployment creates or updates the Makler Search platform in
