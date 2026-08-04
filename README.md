@@ -7,7 +7,7 @@ Local scraper and listing browser for multiple real-estate brokers.
 - Scrapes several broker websites and groups results by broker
 - Caches listing data for 5 minutes
 - The Azure Timer Function refreshes listings asynchronously at the start of every hour from 06:00 through 19:00
-- Keeps listing history with first-found date, age in days, and a `Gelöscht` note when a successfully scraped broker no longer publishes an offer
+- Keeps listing history with first-found date, age in days, and a `Gelöscht` note after two consecutive non-empty successful scrapes no longer publish an offer
 - Allows sorting offers from newest to oldest first-found date
 - Serves a simple browser UI with broker and listing filters
 

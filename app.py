@@ -209,23 +209,36 @@ def enrich_listing_history(previous, current, broker_success, now=None):
                 'first_seen_at': first_seen_at,
                 'last_seen_at': now,
                 'note': '',
+                'missing_count': 0,
             })
             result[identity] = item
 
     for broker_key, was_successful in (broker_success or {}).items():
-        if not was_successful:
+        current_rows = [
+            row for row in (current or {}).get(broker_key, [])
+            if isinstance(row, dict)
+        ]
+        # An empty successful scrape is ambiguous: the broker may be blocked,
+        # temporarily changed, or only partially parsed. Never infer deletion
+        # from that result.
+        if not was_successful or not current_rows:
             continue
         current_ids = {
             listing_identity(broker_key, row)
-            for row in (current or {}).get(broker_key, [])
-            if isinstance(row, dict)
+            for row in current_rows
         }
         for identity, row in list(result.items()):
             if identity[0] != broker_key or identity in current_ids:
                 continue
             row = dict(row)
-            row['note'] = 'Gelöscht'
-            row['is_deleted'] = True
+            try:
+                missing_count = int(row.get('missing_count') or 0) + 1
+            except (TypeError, ValueError):
+                missing_count = 1
+            row['missing_count'] = missing_count
+            if missing_count >= 2:
+                row['note'] = 'Gelöscht'
+                row['is_deleted'] = True
             result[identity] = row
 
     history = {}
@@ -240,6 +253,7 @@ def enrich_listing_history(previous, current, broker_success, now=None):
         row['age_days'] = age_days
         row.setdefault('last_seen_at', first_seen_at)
         row.setdefault('note', '')
+        row.setdefault('missing_count', 0)
         row['is_deleted'] = row.get('note') == 'Gelöscht'
         history.setdefault(broker_key, []).append(row)
     for broker_key in set((previous or {}).keys()) | set((current or {}).keys()) | set((broker_success or {}).keys()):
@@ -5076,7 +5090,36 @@ def fetch_gg_listings():
 
 
 def fetch_marte_listings():
-    return fetch_source_specific_broker_listings(MARTE_URL, r'(immobilie|objekt|expose|angebot|kauf|xhtml)', r'(xhtml|immobilie|objekt|expose|kauf)')
+    try:
+        html = fetch_html(MARTE_URL)
+    except Exception:
+        return []
+
+    listings = []
+    seen = set()
+    card_starts = [match.start() for match in re.finditer(r'class=["\'][^"\']*\blist-object\b', html, re.I)]
+    for index, start in enumerate(card_starts):
+        end = card_starts[index + 1] if index + 1 < len(card_starts) else len(html)
+        card = html[start:end]
+        link_match = re.search(r'href=["\']([^"\']*immobiliendetails\.xhtml\?[^"\']+)["\']', card, re.I)
+        title_match = re.search(r'<h2[^>]*>(.*?)</h2>', card, re.I | re.S)
+        city_match = re.search(r'<span[^>]*class=["\'][^"\']*\bcity\b[^"\']*["\'][^>]*>(.*?)</span>', card, re.I | re.S)
+        price_match = re.search(r'Kaufpreis\s*:\s*</strong>\s*<span[^>]*>(.*?)</span>', card, re.I | re.S)
+        area_match = re.search(r'<div[^>]*class=["\'][^"\']*\barea-details\b[^"\']*["\'][\s\S]*?([0-9.,]+)\s*m(?:²|2)', card, re.I)
+        if not (link_match and title_match and price_match):
+            continue
+
+        add_listing(
+            listings,
+            seen,
+            clean_text(title_match.group(1)),
+            clean_text(price_match.group(1)),
+            area_match.group(1).replace('.', '').replace(',', '.') if area_match else '',
+            clean_text(city_match.group(1)) if city_match else '',
+            urljoin(MARTE_URL, clean_text(link_match.group(1))),
+        )
+
+    return listings[:20]
 
 
 def fetch_dawonia_listings():
@@ -6349,6 +6392,10 @@ class Handler(BaseHTTPRequestHandler):
         <div class="toolbar">
             <input id="broker-search" class="search" type="search" placeholder="Makler filtern">
             <input id="listing-search" class="search" type="search" placeholder="Ort, Titel, Preis oder Wohnfläche filtern">
+            <label class="meta" for="show-deleted">
+                <input id="show-deleted" type="checkbox">
+                Gelöschte Angebote anzeigen
+            </label>
             <div class="numeric-filters">
                 <input id="min-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis von (€)">
                 <input id="max-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis bis (€)">
@@ -6378,6 +6425,7 @@ class Handler(BaseHTTPRequestHandler):
         const tabsRoot = document.getElementById('tabs');
         const brokerSearchInput = document.getElementById('broker-search');
         const listingSearchInput = document.getElementById('listing-search');
+        const showDeletedInput = document.getElementById('show-deleted');
         const minPriceInput = document.getElementById('min-price');
         const maxPriceInput = document.getElementById('max-price');
         const minAreaInput = document.getElementById('min-area');
@@ -6394,6 +6442,7 @@ class Handler(BaseHTTPRequestHandler):
         let brokerQuery = '';
         let listingQuery = '';
         let listingSort = 'first-newest';
+        let showDeleted = false;
         let brokerStatuses = {};
         let refreshPollTimer = null;
 
@@ -6472,6 +6521,10 @@ class Handler(BaseHTTPRequestHandler):
             const minArea = readFilterValue(minAreaInput);
             const maxArea = readFilterValue(maxAreaInput);
             const filtered = listings.filter(item => {
+                const isDeleted = item.is_deleted === true || item.note === 'Gelöscht';
+                if (!showDeleted && isDeleted) {
+                    return false;
+                }
                 const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
                 if (query && !haystack.includes(query)) {
                     return false;
@@ -6765,6 +6818,12 @@ class Handler(BaseHTTPRequestHandler):
 
         [minPriceInput, maxPriceInput, minAreaInput, maxAreaInput].forEach(input => {
             input.addEventListener('input', () => renderActiveListings());
+        });
+
+        showDeletedInput.addEventListener('change', event => {
+            showDeleted = event.target.checked;
+            renderTabs(cachedData || {});
+            renderActiveListings();
         });
 
         listingSortInput.addEventListener('change', event => {

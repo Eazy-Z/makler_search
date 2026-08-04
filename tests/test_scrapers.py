@@ -43,6 +43,27 @@ def test_static_zero_result_broker_parsers_accept_current_field_markup():
         assert app.fetch_schneider_listings()[0]['price'] == '875.000 €'
 
 
+def test_marte_parser_keeps_active_object_1517_from_listing_card():
+    marte = '''<div class="column fourth"><div class="list-object">
+    <a href="immobiliendetails.xhtml?id[obj0]=1517"><img src="1517.jpg"></a>
+    <h2>Klassische 4,5-Zimmer-Altbauwohnung ...</h2>
+    <span class="city">München</span>
+    <p><strong>Kaufpreis:</strong> <span>1.293.000 €</span></p>
+    <div class="details area-details">Wohnfläche 117 m²</div>
+    </div></div>'''
+
+    with patch.object(app, 'fetch_html', return_value=marte):
+        rows = app.fetch_marte_listings()
+
+    assert rows == [{
+        'title': 'Klassische 4,5-Zimmer-Altbauwohnung ...',
+        'price': '1.293.000 €',
+        'area_sqm': '117',
+        'location': 'München',
+        'link': 'https://www.immobilienmarte.de/immobiliendetails.xhtml?id[obj0]=1517',
+    }]
+
+
 def test_listing_history_tracks_first_seen_age_and_deleted_note():
     previous = {
         'broker': [{
@@ -59,8 +80,38 @@ def test_listing_history_tracks_first_seen_age_and_deleted_note():
 
     row = history['broker'][0]
     assert row['age_days'] == 1
-    assert row['note'] == 'Gelöscht'
-    assert row['is_deleted'] is True
+    assert row['note'] == ''
+    assert row['is_deleted'] is False
+    assert row['missing_count'] == 0
+
+
+def test_listing_history_marks_missing_offer_only_when_broker_returns_other_rows():
+    previous = {
+        'broker': [{
+            'title': 'Altes Haus',
+            'link': 'https://example.com/expose/1',
+            'first_seen_at': 1,
+        }],
+    }
+    current = {
+        'broker': [{
+            'title': 'Neues Haus',
+            'link': 'https://example.com/expose/2',
+        }],
+    }
+
+    history = app.enrich_listing_history(previous, current, {'broker': True}, now=86401)
+
+    old_row = next(row for row in history['broker'] if row['title'] == 'Altes Haus')
+    assert old_row['note'] == ''
+    assert old_row['is_deleted'] is False
+    assert old_row['missing_count'] == 1
+
+    history = app.enrich_listing_history(history, current, {'broker': True}, now=172801)
+    old_row = next(row for row in history['broker'] if row['title'] == 'Altes Haus')
+    assert old_row['note'] == 'Gelöscht'
+    assert old_row['is_deleted'] is True
+    assert old_row['missing_count'] == 2
 
 
 def test_listing_history_clears_deleted_note_when_listing_returns():
