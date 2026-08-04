@@ -6281,6 +6281,7 @@ def get_current_listings():
     if LISTINGS_CACHE is not None:
         return LISTINGS_CACHE
 
+    persisted_is_stale = False
     try:
         persisted_listings = read_listings_blob()
     except Exception as error:
@@ -6290,11 +6291,27 @@ def get_current_listings():
             format_blob_error(error),
         )
         persisted_listings = None
+    if persisted_listings is None:
+        try:
+            persisted_listings = read_listings_blob(include_stale=True)
+            persisted_is_stale = persisted_listings is not None
+        except Exception as error:
+            LOGGER.warning(
+                'Could not read stale listings blob %s: %s',
+                LISTINGS_BLOB_NAME,
+                format_blob_error(error),
+            )
     if persisted_listings is not None:
         persisted_listings, generated_at = persisted_listings
         LISTINGS_CACHE = persisted_listings
         LISTINGS_CACHE_TIME = now
         LISTINGS_CACHE_UPDATED_AT = generated_at
+        if persisted_is_stale:
+            LOGGER.warning(
+                'Serving stale listings from %s while a background refresh runs.',
+                LISTINGS_BLOB_NAME,
+            )
+            start_async_refresh()
         return LISTINGS_CACHE
     return empty_listings()
 
