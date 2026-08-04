@@ -6676,7 +6676,10 @@ class Handler(BaseHTTPRequestHandler):
                 if (showDeleted !== isDeleted) {
                     return false;
                 }
-                if (showPriceChanged && item.price_changed !== true) {
+                const previousPrice = item.previous_price || item.old_price;
+                const hasPriceChange = item.price_changed === true
+                    || (previousPrice && item.price && previousPrice !== item.price);
+                if (showPriceChanged && !hasPriceChange) {
                     return false;
                 }
                 const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
