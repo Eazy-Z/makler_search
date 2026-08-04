@@ -165,3 +165,34 @@ def refresh_listings(timer: func.TimerRequest) -> None:
     except URLError:
         logging.exception('Backend was unreachable for the automatic listing refresh.')
         raise
+
+@app.timer_trigger(schedule='0 * * * * *', arg_name='timer')
+def test_refresh_listings(timer: func.TimerRequest) -> None:
+    """Send a synthetic change email every minute while explicitly enabled."""
+    if os.environ.get('EMAIL_TEST_TIMER_ENABLED', '').lower() != 'true':
+        return
+
+    now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE))
+    if not is_refresh_hour(now):
+        logging.info('Email test refresh skipped at %s.', now.isoformat())
+        return
+
+    changes = {
+        'new_listings': [{
+            'title': 'TESTTIMER - synthetisches Inserat',
+            'price': '123.456 €',
+            'area_sqm': '123',
+            'location': 'Nur ein Timer-Test',
+            'link': 'https://example.com/email-timer-test',
+        }],
+        'price_changed_listings': [],
+    }
+    try:
+        logging.info('Email test refresh started.')
+        if send_change_email(changes, subject_prefix='TESTTIMER - '):
+            logging.info('Email test refresh sent the test email.')
+        else:
+            logging.info('Email test refresh found no recipients; no email sent.')
+    except smtplib.SMTPException:
+        logging.exception('Email test refresh failed during SMTP delivery.')
+        raise
