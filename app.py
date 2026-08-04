@@ -6069,6 +6069,19 @@ def fetch_broker_rows_with_status(key: str, fetcher):
     return [], None
 
 
+def scrape_is_plausibly_complete(previous_rows, current_rows):
+    previous_active = [
+        row for row in (previous_rows or [])
+        if isinstance(row, dict) and not row.get('is_deleted')
+    ]
+    current_rows = [row for row in (current_rows or []) if isinstance(row, dict)]
+    if not previous_active or not current_rows:
+        return bool(current_rows)
+
+    minimum_rows = max(1, int(len(previous_active) * 0.5))
+    return len(current_rows) >= minimum_rows
+
+
 def fetch_listings(force_refresh=False):
     global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
     now = time.time()
@@ -6121,7 +6134,11 @@ def fetch_listings(force_refresh=False):
             try:
                 rows, error_message = future.result()
                 listings[key] = rows
-                broker_success[key] = not error_message and key not in BLOCKED_BROKER_REASONS
+                broker_success[key] = (
+                    not error_message
+                    and key not in BLOCKED_BROKER_REASONS
+                    and scrape_is_plausibly_complete(previous_listings.get(key), rows)
+                )
             except Exception:
                 listings[key] = []
                 broker_success[key] = False
@@ -6211,7 +6228,11 @@ def run_async_refresh():
                 error_message = f'{type(error).__name__}: {error}'
 
             listings[key] = rows
-            broker_success[key] = not error_message and key not in BLOCKED_BROKER_REASONS
+            broker_success[key] = (
+                not error_message
+                and key not in BLOCKED_BROKER_REASONS
+                and scrape_is_plausibly_complete(previous_listings.get(key), rows)
+            )
             with REFRESH_STATE_LOCK:
                 REFRESH_STATE['brokers'][key] = {
                     'status': 'error' if error_message else ('done' if rows else 'empty'),

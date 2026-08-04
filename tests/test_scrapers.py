@@ -114,6 +114,17 @@ def test_listing_history_marks_missing_offer_only_when_broker_returns_other_rows
     assert old_row['missing_count'] == 2
 
 
+def test_scrape_completeness_rejects_partial_nonempty_result():
+    previous = [
+        {'title': f'Haus {index}', 'link': f'https://example.com/{index}'}
+        for index in range(10)
+    ]
+    current = [{'title': 'Haus 1', 'link': 'https://example.com/1'}]
+
+    assert app.scrape_is_plausibly_complete(previous, current) is False
+    assert app.scrape_is_plausibly_complete(previous, previous[:5]) is True
+
+
 def test_current_listings_serves_stale_blob_and_starts_refresh():
     stale = ({'broker': [{'title': 'Altes Haus', 'link': 'https://example.com/1'}]}, 1)
     app.LISTINGS_CACHE = None
