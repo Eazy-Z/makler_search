@@ -30,7 +30,7 @@ def refresh_status_url(refresh_url):
     return urlunsplit((parsed.scheme, parsed.netloc, '/internal/refresh-status', '', ''))
 
 
-def send_change_email(changes):
+def send_change_email(changes, subject_prefix=''):
     new_listings = changes.get('new_listings', [])
     price_changed = changes.get('price_changed_listings', [])
     if not new_listings and not price_changed:
@@ -63,7 +63,8 @@ def send_change_email(changes):
     sender = os.environ['EMAIL_FROM_ADDRESS']
     message['From'] = formataddr(('Makler Search', sender))
     message['To'] = ', '.join(recipients)
-    message['Subject'] = f"Immobilien-Update: {len(new_listings)} neue, {len(price_changed)} Preisänderungen"
+    subject = f"Immobilien-Update: {len(new_listings)} neue, {len(price_changed)} Preisänderungen"
+    message['Subject'] = f'{subject_prefix}{subject}'
     message.set_content(body)
 
     host = os.environ['EMAIL_SMTP_HOST']
@@ -76,6 +77,32 @@ def send_change_email(changes):
             smtp.login(username, password)
         smtp.send_message(message, from_addr=sender, to_addrs=recipients)
     return True
+
+
+@app.route(route='test-email', auth_level=func.AuthLevel.FUNCTION)
+def test_email(req: func.HttpRequest) -> func.HttpResponse:
+    """Send one synthetic email to verify the deployed SMTP configuration."""
+    changes = {
+        'new_listings': [{
+            'title': 'TESTMAIL - synthetisches Angebot',
+            'price': '999.999 €',
+            'area_sqm': '99',
+            'location': 'Nur ein E-Mail-Test',
+            'link': 'https://example.com/email-test',
+        }],
+        'price_changed_listings': [],
+    }
+    try:
+        send_change_email(changes, subject_prefix='TESTMAIL - ')
+    except (KeyError, OSError, smtplib.SMTPException, ValueError) as error:
+        logging.exception('Test email could not be sent.')
+        return func.HttpResponse(
+            f'Test email failed: {error.__class__.__name__}',
+            status_code=500,
+        )
+
+    logging.info('Test email sent successfully.')
+    return func.HttpResponse('Test email sent successfully.', status_code=200)
 
 
 def wait_for_refresh_changes(refresh_url):
