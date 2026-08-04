@@ -6547,6 +6547,26 @@ class Handler(BaseHTTPRequestHandler):
             lastUpdated.textContent = `Letzte Aktualisierung: ${new Date(value * 1000).toLocaleString('de-DE')}`;
         }
 
+        function formatFirstSeen(timestamp) {
+            const value = Number(timestamp);
+            if (!Number.isFinite(value)) {
+                return 'Erstfunddatum nicht verfügbar';
+            }
+
+            const elapsedSeconds = Math.max(0, Date.now() / 1000 - value);
+            if (elapsedSeconds < 3600) {
+                const minutes = Math.max(1, Math.floor(elapsedSeconds / 60));
+                return `Zum ersten Mal gefunden vor ${minutes} ${minutes === 1 ? 'Minute' : 'Minuten'}`;
+            }
+            if (elapsedSeconds < 86400) {
+                const hours = Math.floor(elapsedSeconds / 3600);
+                return `Zum ersten Mal gefunden vor ${hours} ${hours === 1 ? 'Stunde' : 'Stunden'}`;
+            }
+
+            const days = Math.floor(elapsedSeconds / 86400);
+            return `Zum ersten Mal gefunden vor ${days} ${days === 1 ? 'Tag' : 'Tagen'}`;
+        }
+
         function formatLabel(key) {
             return brokerLabels[key] || key.replace(/_/g, ' ').replace(/\\b\\w/g, char => char.toUpperCase());
         }
@@ -6648,10 +6668,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 const age = document.createElement('div');
                 age.className = 'meta';
-                const ageDays = Number(item.age_days);
-                age.textContent = Number.isFinite(ageDays)
-                    ? `Zum ersten Mal gefunden vor ${ageDays} ${ageDays === 1 ? 'Tag' : 'Tagen'}`
-                    : 'Erstfunddatum nicht verfügbar';
+                age.textContent = formatFirstSeen(item.first_seen_at);
 
                 const note = document.createElement('div');
                 note.className = 'meta';
