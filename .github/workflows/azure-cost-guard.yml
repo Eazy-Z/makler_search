@@ -2,7 +2,7 @@ name: Stop Azure apps at cost threshold
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '0 */3 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
