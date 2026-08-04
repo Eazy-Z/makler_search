@@ -143,11 +143,22 @@ def refresh_listings(timer: func.TimerRequest) -> None:
                 response.status,
             )
         if not refresh_response.get('started'):
-            logging.info('Listing refresh was already active; no email sent.')
-            return
+            logging.info('Listing refresh was already active; waiting for its result.')
         changes = wait_for_refresh_changes(refresh_url)
+        new_count = len(changes.get('new_listings', []))
+        price_count = len(changes.get('price_changed_listings', []))
+        logging.info(
+            'Automatic listing refresh completed with %s new listings and %s price changes.',
+            new_count,
+            price_count,
+        )
         if send_change_email(changes):
             logging.info('Listing change email sent.')
+        else:
+            logging.info('No listing change email sent because the change report was empty or recipients were missing.')
+    except smtplib.SMTPException:
+        logging.exception('Listing change email failed during SMTP delivery.')
+        raise
     except HTTPError:
         logging.exception('Backend rejected the automatic listing refresh.')
         raise
