@@ -273,6 +273,31 @@ def test_refresh_changes_detects_new_and_price_changed_listings():
     assert changes['price_changed_listings'][0]['old_price'] == '900.000 €'
 
 
+def test_mark_price_changed_listings_marks_current_rows_and_clears_stale_flags():
+    current = {
+        'broker': [
+            {'title': 'Preis geändert', 'price': '875.000 €', 'link': 'https://example.com/1'},
+            {'title': 'Unverändert', 'price': '700.000 €', 'link': 'https://example.com/2', 'price_changed': True},
+        ],
+    }
+    changes = {
+        'new_listings': [],
+        'price_changed_listings': [{
+            'title': 'Preis geändert',
+            'price': '875.000 €',
+            'old_price': '900.000 €',
+            'link': 'https://example.com/1',
+            'broker': 'broker',
+        }],
+    }
+
+    app.mark_price_changed_listings(current, changes)
+
+    assert current['broker'][0]['price_changed'] is True
+    assert current['broker'][0]['previous_price'] == '900.000 €'
+    assert 'price_changed' not in current['broker'][1]
+
+
 def test_send_change_email_skips_empty_change_report():
     from timer_function.function_app import send_change_email
 

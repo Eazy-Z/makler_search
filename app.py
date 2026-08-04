@@ -292,6 +292,23 @@ def refresh_changes(previous, current):
         'new_listings': new_listings,
         'price_changed_listings': price_changed_listings,
     }
+
+
+def mark_price_changed_listings(current, changes):
+    changed_by_identity = {
+        listing_identity(item.get('broker', ''), item): item
+        for item in changes.get('price_changed_listings', [])
+    }
+    for broker_key, rows in (current or {}).items():
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            row.pop('price_changed', None)
+            row.pop('previous_price', None)
+            changed = changed_by_identity.get(listing_identity(broker_key, row))
+            if changed:
+                row['price_changed'] = True
+                row['previous_price'] = changed.get('old_price', '')
 AIGNER_URLS = [
     'https://www.aigner-immobilien.de/immobilien/',
     'https://www.aigner-immobilien.de/objekte/',
@@ -6306,6 +6323,7 @@ def run_async_refresh():
         listings.setdefault(key, [])
 
     changes = refresh_changes(previous_listings, listings)
+    mark_price_changed_listings(listings, changes)
     listings = enrich_listing_history(previous_listings, listings, broker_success)
 
     updated_at = time.time()
@@ -6494,6 +6512,10 @@ class Handler(BaseHTTPRequestHandler):
                 <input id="show-deleted" type="checkbox">
                 Nur gelöschte Angebote anzeigen
             </label>
+            <label class="meta" for="show-price-changed">
+                <input id="show-price-changed" type="checkbox">
+                Nur Preisänderungen anzeigen
+            </label>
             <div class="numeric-filters">
                 <input id="min-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis von (€)">
                 <input id="max-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis bis (€)">
@@ -6527,6 +6549,7 @@ class Handler(BaseHTTPRequestHandler):
         const brokerSearchInput = document.getElementById('broker-search');
         const listingSearchInput = document.getElementById('listing-search');
         const showDeletedInput = document.getElementById('show-deleted');
+        const showPriceChangedInput = document.getElementById('show-price-changed');
         const minPriceInput = document.getElementById('min-price');
         const maxPriceInput = document.getElementById('max-price');
         const minAreaInput = document.getElementById('min-area');
@@ -6545,6 +6568,7 @@ class Handler(BaseHTTPRequestHandler):
         let listingQuery = '';
         let listingSort = 'first-newest';
         let showDeleted = false;
+        let showPriceChanged = false;
         let brokerStatuses = {};
         let refreshPollTimer = null;
 
@@ -6652,6 +6676,9 @@ class Handler(BaseHTTPRequestHandler):
                 if (showDeleted !== isDeleted) {
                     return false;
                 }
+                if (showPriceChanged && item.price_changed !== true) {
+                    return false;
+                }
                 const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
                 if (query && !haystack.includes(query)) {
                     return false;
@@ -6702,9 +6729,10 @@ class Handler(BaseHTTPRequestHandler):
                 const price = document.createElement('div');
                 price.className = 'meta';
                 price.textContent = 'Preis: ';
-                if (item.old_price && item.price && item.old_price !== item.price) {
+                const previousPrice = item.previous_price || item.old_price;
+                if (previousPrice && item.price && previousPrice !== item.price) {
                     const oldPrice = document.createElement('s');
-                    oldPrice.textContent = item.old_price;
+                    oldPrice.textContent = previousPrice;
                     const newPrice = document.createElement('strong');
                     newPrice.textContent = ` ${item.price}`;
                     price.append(oldPrice, newPrice);
@@ -6822,7 +6850,8 @@ class Handler(BaseHTTPRequestHandler):
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `immobilien-${showDeleted ? 'geloescht' : 'aktuell'}-${new Date().toISOString().slice(0, 10)}.csv`;
+            const viewName = showPriceChanged ? 'preisgeaendert' : (showDeleted ? 'geloescht' : 'aktuell');
+            link.download = `immobilien-${viewName}-${new Date().toISOString().slice(0, 10)}.csv`;
             document.body.append(link);
             link.click();
             link.remove();
@@ -6983,6 +7012,12 @@ class Handler(BaseHTTPRequestHandler):
 
         showDeletedInput.addEventListener('change', event => {
             showDeleted = event.target.checked;
+            renderTabs(cachedData || {});
+            renderActiveListings();
+        });
+
+        showPriceChangedInput.addEventListener('change', event => {
+            showPriceChanged = event.target.checked;
             renderTabs(cachedData || {});
             renderActiveListings();
         });
