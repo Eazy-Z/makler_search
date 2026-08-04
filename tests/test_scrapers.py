@@ -164,6 +164,32 @@ def test_listing_history_clears_deleted_note_when_listing_returns():
     assert row['is_deleted'] is False
 
 
+def test_listing_history_matches_expose_urls_without_fragments():
+    previous = {
+        'seebauer': [{
+            'title': 'Wohnung',
+            'link': 'https://example.com/immobilien/wohnung/#price-block-1',
+            'note': 'Gelöscht',
+            'is_deleted': True,
+        }],
+    }
+
+    history = app.enrich_listing_history(
+        previous,
+        {'seebauer': [{
+            'title': 'Wohnung',
+            'link': 'https://example.com/immobilien/wohnung/',
+        }]},
+        {'seebauer': True},
+        now=172801,
+    )
+
+    rows = history['seebauer']
+    assert len(rows) == 1
+    assert rows[0]['note'] == ''
+    assert rows[0]['is_deleted'] is False
+
+
 def test_listing_history_keeps_old_price_when_price_changes():
     previous = {
         'broker': [{

@@ -173,6 +173,8 @@ def format_blob_error(error):
 
 def listing_identity(broker_key, listing):
     link = clean_text(str((listing or {}).get('link', ''))).rstrip('/').lower()
+    if link:
+        link = urlparse(link)._replace(fragment='').geturl().rstrip('/')
     return broker_key, link or clean_text(str((listing or {}).get('title', ''))).lower()
 
 
