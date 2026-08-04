@@ -6480,9 +6480,14 @@ class Handler(BaseHTTPRequestHandler):
         }
 
         function flattenListings(data) {
-            return Object.entries(data).flatMap(([brokerKey, listings]) =>
-                (listings || []).map(item => ({ ...item, brokerKey }))
-            );
+            const flattened = [];
+            Object.keys(data || {}).forEach(brokerKey => {
+                const listings = Array.isArray(data[brokerKey]) ? data[brokerKey] : [];
+                listings.forEach(item => {
+                    flattened.push(Object.assign({}, item, { brokerKey }));
+                });
+            });
+            return flattened;
         }
 
         function setLoading() {
@@ -6524,7 +6529,7 @@ class Handler(BaseHTTPRequestHandler):
             const maxPrice = readFilterValue(maxPriceInput);
             const minArea = readFilterValue(minAreaInput);
             const maxArea = readFilterValue(maxAreaInput);
-            const filtered = listings.filter(item => {
+            const filtered = (Array.isArray(listings) ? listings : []).filter(item => {
                 const isDeleted = item.is_deleted === true || item.note === 'Gelöscht';
                 if (showDeleted !== isDeleted) {
                     return false;
