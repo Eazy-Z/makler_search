@@ -6409,7 +6409,10 @@ class Handler(BaseHTTPRequestHandler):
                 </select>
             </label>
             <div class="refresh-actions">
-                <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
+                <div>
+                    <button id="export-csv" class="refresh-button" type="button">Aktuelle Ansicht als CSV exportieren</button>
+                    <button id="refresh-all" class="refresh-button" type="button">Alle Angebote aktualisieren</button>
+                </div>
                 <p id="last-updated" class="result-summary"></p>
             </div>
             <div id="tabs" class="tabs"></div>
@@ -6431,6 +6434,7 @@ class Handler(BaseHTTPRequestHandler):
         const minAreaInput = document.getElementById('min-area');
         const maxAreaInput = document.getElementById('max-area');
         const listingSortInput = document.getElementById('listing-sort');
+        const exportCsvButton = document.getElementById('export-csv');
         const refreshAllButton = document.getElementById('refresh-all');
         const lastUpdated = document.getElementById('last-updated');
         const root = document.getElementById('listings');
@@ -6668,6 +6672,42 @@ class Handler(BaseHTTPRequestHandler):
             renderListings(list);
         }
 
+        function csvCell(value) {
+            return `"${String(value ?? '').replace(/"/g, '""')}"`;
+        }
+
+        function exportCurrentView() {
+            if (!cachedData) {
+                return;
+            }
+            const sourceListings = activeTab === allListingsTab
+                ? flattenListings(cachedData)
+                : (cachedData[activeTab] || []);
+            const listings = filterListings(sourceListings);
+            const headers = ['Makler', 'Titel', 'Preis', 'Wohnfläche (m²)', 'Ort', 'Erstfund (Unix)', 'Alter (Tage)', 'Notiz', 'Exposé'];
+            const rows = listings.map(item => [
+                formatLabel(item.brokerKey || activeTab),
+                item.title,
+                item.price,
+                item.area_sqm,
+                item.location,
+                item.first_seen_at,
+                item.age_days,
+                item.note,
+                item.link,
+            ]);
+            const csv = [headers, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
+            const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `immobilien-${showDeleted ? 'geloescht' : 'aktuell'}-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        }
+
         async function readJsonResponse(res) {
             const text = await res.text();
             if (!text.trim()) {
@@ -6830,6 +6870,8 @@ class Handler(BaseHTTPRequestHandler):
             listingSort = event.target.value;
             renderActiveListings();
         });
+
+        exportCsvButton.addEventListener('click', exportCurrentView);
 
         refreshAllButton.addEventListener('click', () => {
             refreshListings('/api/listings/refresh-all');
