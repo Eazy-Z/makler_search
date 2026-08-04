@@ -64,6 +64,29 @@ def test_marte_parser_keeps_active_object_1517_from_listing_card():
     }]
 
 
+def test_seebauer_parser_uses_real_detail_links():
+    overview = '''
+        <a href="/immobilien/wohnung-eigentumswohnung-erdgeschosswohnung-in-muenchen-kaufen-s10-etw-2/">Angebot</a>
+        <a href="/immobilien/">Alle Immobilien</a>
+    '''
+    detail = '''
+        <h1>Helle Gartenwohnung in Toplage</h1>
+        Kaufpreis: 599.000 € Objekt-ID: S10 - ETW 2
+        Standort: 80997 München Wohnfläche: 54.11 m²
+    '''
+
+    with patch.object(app, 'fetch_html', side_effect=[overview, detail]):
+        rows = app.fetch_seebauer_listings()
+
+    assert rows == [{
+        'title': 'Helle Gartenwohnung in Toplage',
+        'price': '599.000 €',
+        'area_sqm': '54.11',
+        'location': 'München',
+        'link': 'https://www.seebauer-immobilien.de/immobilien/wohnung-eigentumswohnung-erdgeschosswohnung-in-muenchen-kaufen-s10-etw-2/',
+    }]
+
+
 def test_listing_history_tracks_first_seen_age_and_deleted_note():
     previous = {
         'broker': [{

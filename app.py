@@ -1159,6 +1159,8 @@ def apply_listing_rules(raw_listings):
         link = clean_text(raw.get('link', ''))
         if not link or is_non_listing_url(link):
             continue
+        if re.search(r'#price-block-\d+$', link, re.I):
+            continue
 
         if is_generic_navigation_title(title):
             title = normalize_title_from_link(link)
@@ -5028,7 +5030,63 @@ def fetch_heimmobilien_listings():
 
 
 def fetch_seebauer_listings():
-    return fetch_generic_broker_listings(SEEBAUER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')
+    try:
+        html = fetch_html(SEEBAUER_URL)
+    except Exception:
+        return []
+
+    detail_links = []
+    for raw_href in re.findall(r'href=["\']([^"\']+)["\']', html, re.I):
+        href = urljoin(SEEBAUER_URL, clean_text(raw_href))
+        if not re.search(r'/immobilien/[^/?#]+/?(?:[?#].*)?$', href, re.I):
+            continue
+        if href.rstrip('/').lower() == SEEBAUER_URL.rstrip('/').lower():
+            continue
+        if href not in detail_links:
+            detail_links.append(href)
+
+    listings = []
+    seen = set()
+    for href in detail_links[:24]:
+        try:
+            detail_html = fetch_html(href)
+        except Exception:
+            continue
+
+        detail_text = clean_text(detail_html)
+        title_match = re.search(r'<h1[^>]*>(.*?)</h1>', detail_html, re.I | re.S)
+        title = clean_text(title_match.group(1)) if title_match else extract_page_title(detail_html)
+        if not is_valid_title(title) or is_generic_navigation_title(title):
+            continue
+
+        price_match = re.search(
+            r'Kaufpreis\s*:\s*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€',
+            detail_text,
+            re.I,
+        )
+        if not price_match:
+            continue
+        area_match = re.search(r'Wohnfläche\s*:\s*([0-9.,]+)\s*m²', detail_text, re.I)
+        location_match = re.search(
+            r'Standort\s*:\s*(?:\d{5}\s+)?(.*?)(?=\s+Wohnfläche\b|\s+Objektart\b|$)',
+            detail_text,
+            re.I,
+        )
+        location = clean_text(location_match.group(1)) if location_match else ''
+        if not is_clean_location_text(location):
+            location = UNKNOWN_LOCATION
+
+        add_listing(
+            listings,
+            seen,
+            title,
+            price_match.group(1),
+            area_match.group(1) if area_match else '',
+            location,
+            href,
+        )
+
+    return listings[:12]
 
 
 def fetch_zippold_listings():
