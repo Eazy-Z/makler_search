@@ -57,12 +57,10 @@ jobs:
 
           timer_bindings = [item for item in bindings if item['type'] == 'timerTrigger']
           http_bindings = [item for item in bindings if item['type'] == 'httpTrigger']
-          assert len(timer_bindings) == 2, bindings
-          assert len(http_bindings) == 1, bindings
+          assert len(timer_bindings) == 1, bindings
+          assert len(http_bindings) == 0, bindings
           schedules = {item['schedule'] for item in timer_bindings}
-          assert schedules == {'0 0 * * * *', '0 * * * * *'}, timer_bindings
-          assert http_bindings[0]['route'] == 'test-email', http_bindings
-          assert http_bindings[0]['authLevel'] == 'FUNCTION', http_bindings
+          assert schedules == {'0 0 * * * *'}, timer_bindings
           print('timer binding smoke test ok')
           PY
                 

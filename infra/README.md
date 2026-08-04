@@ -1,26 +1,3 @@
-For a timer-like test, the temporary `test_refresh_listings` function is
-scheduled every minute and follows the same active-hour and SMTP path as the
-production timer. It is disabled by default. Enable it only briefly:
-
-```bash
-az functionapp config appsettings set \
-  --resource-group <resource-group> \
-  --name <function-app-name> \
-  --settings EMAIL_TEST_TIMER_ENABLED=true
-```
-
-Disable it immediately after receiving the test mail:
-
-```bash
-az functionapp config appsettings delete \
-  --resource-group <resource-group> \
-  --name <function-app-name> \
-  --setting-names EMAIL_TEST_TIMER_ENABLED
-```
-
-The test mail has the subject prefix `TESTTIMER -` and is sent at most once
-per minute around the clock. The production timer remains restricted to the
-configured active hours.
 # Azure infrastructure
 
 This Bicep deployment creates or updates the Makler Search platform in

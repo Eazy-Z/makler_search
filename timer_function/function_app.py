@@ -79,32 +79,6 @@ def send_change_email(changes, subject_prefix=''):
     return True
 
 
-@app.route(route='test-email', auth_level=func.AuthLevel.FUNCTION)
-def test_email(req: func.HttpRequest) -> func.HttpResponse:
-    """Send one synthetic email to verify the deployed SMTP configuration."""
-    changes = {
-        'new_listings': [{
-            'title': 'TESTMAIL - synthetisches Angebot',
-            'price': '999.999 €',
-            'area_sqm': '99',
-            'location': 'Nur ein E-Mail-Test',
-            'link': 'https://example.com/email-test',
-        }],
-        'price_changed_listings': [],
-    }
-    try:
-        send_change_email(changes, subject_prefix='TESTMAIL - ')
-    except (KeyError, OSError, smtplib.SMTPException, ValueError) as error:
-        logging.exception('Test email could not be sent.')
-        return func.HttpResponse(
-            f'Test email failed: {error.__class__.__name__}',
-            status_code=500,
-        )
-
-    logging.info('Test email sent successfully.')
-    return func.HttpResponse('Test email sent successfully.', status_code=200)
-
-
 def wait_for_refresh_changes(refresh_url):
     status_url = refresh_status_url(refresh_url)
     token = os.environ.get('INTERNAL_REFRESH_TOKEN', '')
@@ -164,30 +138,4 @@ def refresh_listings(timer: func.TimerRequest) -> None:
         raise
     except URLError:
         logging.exception('Backend was unreachable for the automatic listing refresh.')
-        raise
-
-@app.timer_trigger(schedule='0 * * * * *', arg_name='timer')
-def test_refresh_listings(timer: func.TimerRequest) -> None:
-    """Send a synthetic change email every minute while explicitly enabled."""
-    if os.environ.get('EMAIL_TEST_TIMER_ENABLED', '').lower() != 'true':
-        return
-
-    changes = {
-        'new_listings': [{
-            'title': 'TESTTIMER - synthetisches Inserat',
-            'price': '123.456 €',
-            'area_sqm': '123',
-            'location': 'Nur ein Timer-Test',
-            'link': 'https://example.com/email-timer-test',
-        }],
-        'price_changed_listings': [],
-    }
-    try:
-        logging.info('Email test refresh started.')
-        if send_change_email(changes, subject_prefix='TESTTIMER - '):
-            logging.info('Email test refresh sent the test email.')
-        else:
-            logging.info('Email test refresh found no recipients; no email sent.')
-    except smtplib.SMTPException:
-        logging.exception('Email test refresh failed during SMTP delivery.')
         raise
