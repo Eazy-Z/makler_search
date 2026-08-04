@@ -6394,7 +6394,7 @@ class Handler(BaseHTTPRequestHandler):
             <input id="listing-search" class="search" type="search" placeholder="Ort, Titel, Preis oder Wohnfläche filtern">
             <label class="meta" for="show-deleted">
                 <input id="show-deleted" type="checkbox">
-                Gelöschte Angebote anzeigen
+                Nur gelöschte Angebote anzeigen
             </label>
             <div class="numeric-filters">
                 <input id="min-price" class="numeric-filter" type="number" min="0" step="1000" placeholder="Preis von (€)">
@@ -6522,7 +6522,7 @@ class Handler(BaseHTTPRequestHandler):
             const maxArea = readFilterValue(maxAreaInput);
             const filtered = listings.filter(item => {
                 const isDeleted = item.is_deleted === true || item.note === 'Gelöscht';
-                if (!showDeleted && isDeleted) {
+                if (showDeleted !== isDeleted) {
                     return false;
                 }
                 const haystack = [item.title, item.location, item.price, item.area_sqm].join(' ').toLowerCase();
