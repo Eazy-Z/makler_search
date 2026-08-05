@@ -17,7 +17,7 @@ app = func.FunctionApp()
 REFRESH_START_HOUR = 6
 REFRESH_END_HOUR = 20
 REFRESH_TIME_ZONE = os.environ.get('AUTO_REFRESH_TIME_ZONE', 'Europe/Berlin')
-REFRESH_STATUS_TIMEOUT_SECONDS = 150
+REFRESH_STATUS_TIMEOUT_SECONDS = 900
 
 
 def is_refresh_hour(now=None):
@@ -83,16 +83,28 @@ def wait_for_refresh_changes(refresh_url):
     status_url = refresh_status_url(refresh_url)
     token = os.environ.get('INTERNAL_REFRESH_TOKEN', '')
     deadline = time.monotonic() + REFRESH_STATUS_TIMEOUT_SECONDS
+    poll_count = 0
     while time.monotonic() < deadline:
         request = Request(status_url, headers={'Authorization': f'Bearer {token}'})
         with urlopen(request, timeout=30) as response:
             payload = json.loads(response.read().decode('utf-8'))
+        poll_count += 1
+        if poll_count == 1 or poll_count % 12 == 0 or not payload.get('active'):
+            logging.info(
+                'Listing refresh status: active=%s, error=%s, new=%s, price_changes=%s.',
+                payload.get('active'),
+                payload.get('error'),
+                len(payload.get('changes', {}).get('new_listings', [])),
+                len(payload.get('changes', {}).get('price_changed_listings', [])),
+            )
         if not payload.get('active'):
             if payload.get('error'):
                 raise RuntimeError(payload['error'])
             return payload.get('changes', {})
         time.sleep(5)
-    raise TimeoutError('Timed out waiting for the listing refresh to finish.')
+    raise TimeoutError(
+        f'Timed out waiting {REFRESH_STATUS_TIMEOUT_SECONDS}s for the listing refresh to finish.'
+    )
 
 
 @app.timer_trigger(schedule='0 0 * * * *', arg_name='timer')
