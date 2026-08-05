@@ -107,6 +107,28 @@ def wait_for_refresh_changes(refresh_url):
     )
 
 
+def acknowledge_sent_price_changes(refresh_url, changes):
+    acknowledged_url = refresh_url.rsplit('/', 1)[0] + '/refresh-email-sent'
+    token = os.environ['INTERNAL_REFRESH_TOKEN']
+    payload = json.dumps({
+        'price_changed_listings': changes.get('price_changed_listings', []),
+    }).encode('utf-8')
+    request = Request(
+        acknowledged_url,
+        data=payload,
+        headers={
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    with urlopen(request, timeout=30) as response:
+        result = json.loads(response.read().decode('utf-8'))
+    if not result.get('ok'):
+        raise RuntimeError('Backend rejected the sent price-change acknowledgement.')
+    return result.get('acknowledged', 0)
+
+
 @app.timer_trigger(schedule='0 0 * * * *', arg_name='timer')
 def refresh_listings(timer: func.TimerRequest) -> None:
     now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE))
@@ -139,6 +161,8 @@ def refresh_listings(timer: func.TimerRequest) -> None:
             price_count,
         )
         if send_change_email(changes):
+            acknowledged_count = acknowledge_sent_price_changes(refresh_url, changes)
+            logging.info('Acknowledged %s sent price changes.', acknowledged_count)
             logging.info('Listing change email sent.')
         else:
             logging.info('No listing change email sent because the change report was empty or recipients were missing.')

@@ -273,6 +273,33 @@ def test_refresh_changes_detects_new_and_price_changed_listings():
     assert changes['price_changed_listings'][0]['old_price'] == '900.000 €'
 
 
+def test_refresh_changes_skips_communicated_price_change():
+    previous = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+            'price_change_communicated': True,
+        }],
+    }
+    current = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+        }],
+    }
+
+    changes = app.refresh_changes(previous, current)
+
+    assert changes['price_changed_listings'] == []
+
+    current['broker'][0]['price'] = '850.000 €'
+    changes = app.refresh_changes(previous, current)
+
+    assert [item['title'] for item in changes['price_changed_listings']] == ['Bestehendes Haus']
+
+
 def test_mark_price_changed_listings_marks_current_rows_and_clears_stale_flags():
     current = {
         'broker': [

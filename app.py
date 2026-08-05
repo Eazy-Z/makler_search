@@ -203,10 +203,15 @@ def enrich_listing_history(previous, current, broker_success, now=None):
             new_price = clean_text(str(item.get('price', '')))
             if old_price and new_price and old_price != new_price:
                 item['old_price'] = old_price
+                item['price_change_communicated'] = False
             elif old.get('old_price') and old_price == new_price:
                 item['old_price'] = old['old_price']
+                item['price_change_communicated'] = old.get('price_change_communicated', False)
+                if old.get('price_change_communicated_price'):
+                    item['price_change_communicated_price'] = old['price_change_communicated_price']
             else:
                 item.pop('old_price', None)
+                item.pop('price_change_communicated', None)
             item.update({
                 'first_seen_at': first_seen_at,
                 'last_seen_at': now,
@@ -284,7 +289,14 @@ def refresh_changes(previous, current):
             item['broker'] = broker_key
             if previous_row is None or previous_row.get('is_deleted'):
                 new_listings.append(item)
-            elif clean_text(str(previous_row.get('price', ''))) != clean_text(str(row.get('price', ''))):
+            elif (
+                clean_text(str(previous_row.get('price', ''))) != clean_text(str(row.get('price', '')))
+                and not (
+                    previous_row.get('price_change_communicated', False)
+                    and previous_row.get('price_change_communicated_price', previous_row.get('price'))
+                    == clean_text(str(row.get('price', '')))
+                )
+            ):
                 item['old_price'] = clean_text(str(previous_row.get('price', '')))
                 price_changed_listings.append(item)
 
@@ -6274,6 +6286,27 @@ def refresh_status_payload(include_listings=False):
         return payload
 
 
+def acknowledge_price_changes(acknowledged):
+    acknowledged_ids = {
+        listing_identity(item.get('broker', ''), item)
+        for item in (acknowledged or [])
+        if isinstance(item, dict)
+    }
+    if not acknowledged_ids:
+        return 0
+
+    changed_count = 0
+    for broker_key, rows in (LISTINGS_CACHE or {}).items():
+        for row in rows or []:
+            if listing_identity(broker_key, row) in acknowledged_ids:
+                row['price_change_communicated'] = True
+                row['price_change_communicated_price'] = clean_text(str(row.get('price', '')))
+                changed_count += 1
+    if changed_count:
+        write_listings_blob(LISTINGS_CACHE, LISTINGS_CACHE_UPDATED_AT)
+    return changed_count
+
+
 def run_async_refresh():
     global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
 
@@ -7054,12 +7087,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         global LAST_REFRESH_REQUEST_TIME
-        if self.path == '/internal/refresh':
+        if self.path in {'/internal/refresh', '/internal/refresh-email-sent'}:
             expected_token = INTERNAL_REFRESH_TOKEN
             authorization = self.headers.get('Authorization', '')
             if not expected_token or authorization != f'Bearer {expected_token}':
                 body = json.dumps({'ok': False, 'error': 'Unauthorized'}).encode('utf-8')
                 self.send_response(401)
+            elif self.path == '/internal/refresh-email-sent':
+                content_length = int(self.headers.get('Content-Length', '0'))
+                payload = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                acknowledged = payload.get('price_changed_listings', [])
+                count = acknowledge_price_changes(acknowledged)
+                body = json.dumps({'ok': True, 'acknowledged': count}).encode('utf-8')
+                self.send_response(200)
             else:
                 started = start_async_refresh()
                 body = json.dumps({
