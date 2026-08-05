@@ -219,6 +219,7 @@ resource webAppAuth 'Microsoft.Web/sites/config@2022-09-01' = if (!empty(entraCl
       unauthenticatedClientAction: 'RedirectToLoginPage'
       excludedPaths: [
         '/internal/refresh'
+        '/internal/refresh-status'
       ]
     }
     identityProviders: {
