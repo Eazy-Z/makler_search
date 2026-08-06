@@ -6346,13 +6346,16 @@ def run_async_refresh():
 
     listings = {}
     previous_listings = LISTINGS_CACHE or {}
-    if not previous_listings:
-        try:
-            persisted = read_listings_blob(include_stale=True)
-        except Exception:
-            persisted = None
-        if persisted is not None:
-            previous_listings = persisted[0] or {}
+    try:
+        persisted = read_listings_blob(include_stale=True)
+    except Exception as error:
+        LOGGER.warning(
+            'Could not read listings blob before refresh: %s',
+            format_blob_error(error),
+        )
+        persisted = None
+    if persisted is not None:
+        previous_listings = persisted[0] or {}
     broker_success = {}
     executor = ThreadPoolExecutor(max_workers=min(8, len(BROKER_SOURCES)) or 1)
     futures = {
