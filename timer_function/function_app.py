@@ -151,7 +151,8 @@ def refresh_listings(timer: func.TimerRequest) -> None:
                 response.status,
             )
         if not refresh_response.get('started'):
-            logging.info('Listing refresh was already active; waiting for its result.')
+            logging.info('Listing refresh was already active; email delivery belongs to the active refresh.')
+            return
         changes = wait_for_refresh_changes(refresh_url)
         new_count = len(changes.get('new_listings', []))
         price_count = len(changes.get('price_changed_listings', []))

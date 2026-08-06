@@ -201,7 +201,19 @@ def enrich_listing_history(previous, current, broker_success, now=None):
             item = dict(row)
             old_price = clean_text(str(old.get('price', '')))
             new_price = clean_text(str(item.get('price', '')))
-            if old_price and new_price and old_price != new_price:
+            communicated_price = clean_text(str(old.get('price_change_communicated_price', '')))
+            if (
+                old.get('price_change_communicated')
+                and (
+                    communicated_price == new_price
+                    or (not communicated_price and old_price == new_price)
+                )
+            ):
+                if old.get('old_price'):
+                    item['old_price'] = old['old_price']
+                item['price_change_communicated'] = True
+                item['price_change_communicated_price'] = communicated_price
+            elif old_price and new_price and old_price != new_price:
                 item['old_price'] = old_price
                 item['price_change_communicated'] = False
             elif old.get('old_price') and old_price == new_price:
@@ -6287,6 +6299,8 @@ def refresh_status_payload(include_listings=False):
 
 
 def acknowledge_price_changes(acknowledged):
+    global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
+
     acknowledged_ids = {
         listing_identity(item.get('broker', ''), item)
         for item in (acknowledged or [])
@@ -6295,15 +6309,35 @@ def acknowledge_price_changes(acknowledged):
     if not acknowledged_ids:
         return 0
 
+    current_listings = LISTINGS_CACHE or {}
+    current_updated_at = LISTINGS_CACHE_UPDATED_AT
+    if LISTINGS_BLOB_ENABLED:
+        try:
+            persisted = read_listings_blob(include_stale=True)
+        except Exception as error:
+            LOGGER.warning(
+                'Could not read listings blob before acknowledging email: %s',
+                format_blob_error(error),
+            )
+            persisted = None
+        if persisted is not None:
+            persisted_listings, persisted_updated_at = persisted
+            if current_updated_at is None or persisted_updated_at >= current_updated_at:
+                current_listings = persisted_listings
+                current_updated_at = persisted_updated_at
+
     changed_count = 0
-    for broker_key, rows in (LISTINGS_CACHE or {}).items():
+    for broker_key, rows in (current_listings or {}).items():
         for row in rows or []:
             if listing_identity(broker_key, row) in acknowledged_ids:
                 row['price_change_communicated'] = True
                 row['price_change_communicated_price'] = clean_text(str(row.get('price', '')))
                 changed_count += 1
     if changed_count:
-        write_listings_blob(LISTINGS_CACHE, LISTINGS_CACHE_UPDATED_AT)
+        LISTINGS_CACHE = current_listings
+        LISTINGS_CACHE_TIME = time.time()
+        LISTINGS_CACHE_UPDATED_AT = current_updated_at
+        write_listings_blob(current_listings, current_updated_at)
     return changed_count
 
 

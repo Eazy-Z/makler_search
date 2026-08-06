@@ -300,6 +300,60 @@ def test_refresh_changes_skips_communicated_price_change():
     assert [item['title'] for item in changes['price_changed_listings']] == ['Bestehendes Haus']
 
 
+def test_enrich_listing_history_preserves_communication_without_old_price():
+    previous = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+            'price_change_communicated': True,
+            'price_change_communicated_price': '875.000 €',
+        }],
+    }
+
+    history = app.enrich_listing_history(
+        previous,
+        {'broker': [{'title': 'Bestehendes Haus', 'price': '875.000 €', 'link': 'https://example.com/expose/1'}]},
+        {'broker': True},
+        now=86401,
+    )
+
+    row = history['broker'][0]
+    assert row['price_change_communicated'] is True
+    assert row['price_change_communicated_price'] == '875.000 €'
+    assert app.refresh_changes(previous, {'broker': history['broker']})['price_changed_listings'] == []
+
+
+def test_acknowledge_price_changes_persists_current_price(monkeypatch):
+    monkeypatch.setattr(app, 'LISTINGS_BLOB_ENABLED', False)
+    monkeypatch.setattr(app, 'LISTINGS_CACHE', {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+        }],
+    })
+    monkeypatch.setattr(app, 'LISTINGS_CACHE_UPDATED_AT', 123)
+    written = []
+    monkeypatch.setattr(
+        app,
+        'write_listings_blob',
+        lambda listings, updated_at: written.append((listings, updated_at)),
+    )
+
+    count = app.acknowledge_price_changes([{
+        'broker': 'broker',
+        'title': 'Bestehendes Haus',
+        'price': '875.000 €',
+        'link': 'https://example.com/expose/1',
+    }])
+
+    assert count == 1
+    assert app.LISTINGS_CACHE['broker'][0]['price_change_communicated'] is True
+    assert app.LISTINGS_CACHE['broker'][0]['price_change_communicated_price'] == '875.000 €'
+    assert len(written) == 1
+
+
 def test_mark_price_changed_listings_marks_current_rows_and_clears_stale_flags():
     current = {
         'broker': [
