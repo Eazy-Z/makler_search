@@ -199,9 +199,9 @@ def enrich_listing_history(previous, current, broker_success, now=None):
             old = result.get(identity, {})
             first_seen_at = old.get('first_seen_at') or now
             item = dict(row)
-            old_price = clean_text(str(old.get('price', '')))
-            new_price = clean_text(str(item.get('price', '')))
-            communicated_price = clean_text(str(old.get('price_change_communicated_price', '')))
+            old_price = comparable_price(old.get('price', ''))
+            new_price = comparable_price(item.get('price', ''))
+            communicated_price = comparable_price(old.get('price_change_communicated_price', ''))
             if (
                 old.get('price_change_communicated')
                 and (
@@ -302,14 +302,14 @@ def refresh_changes(previous, current):
             if previous_row is None or previous_row.get('is_deleted'):
                 new_listings.append(item)
             elif (
-                clean_text(str(previous_row.get('price', ''))) != clean_text(str(row.get('price', '')))
+                comparable_price(previous_row.get('price', '')) != comparable_price(row.get('price', ''))
                 and not (
                     previous_row.get('price_change_communicated', False)
-                    and previous_row.get('price_change_communicated_price', previous_row.get('price'))
-                    == clean_text(str(row.get('price', '')))
+                    and comparable_price(previous_row.get('price_change_communicated_price', previous_row.get('price')))
+                    == comparable_price(row.get('price', ''))
                 )
             ):
-                item['old_price'] = clean_text(str(previous_row.get('price', '')))
+                item['old_price'] = comparable_price(previous_row.get('price', ''))
                 price_changed_listings.append(item)
 
     return {
@@ -678,6 +678,10 @@ def format_price(value: str) -> str:
 
     number = int(digits)
     return f'{number:,.0f} €'.replace(',', '.')
+
+
+def comparable_price(value: str) -> str:
+    return format_price(clean_text(str(value or '')))
 
 
 def matches_price_rule(price_text: str) -> bool:
@@ -6331,7 +6335,7 @@ def acknowledge_price_changes(acknowledged):
         for row in rows or []:
             if listing_identity(broker_key, row) in acknowledged_ids:
                 row['price_change_communicated'] = True
-                row['price_change_communicated_price'] = clean_text(str(row.get('price', '')))
+                row['price_change_communicated_price'] = comparable_price(row.get('price', ''))
                 changed_count += 1
     if changed_count:
         LISTINGS_CACHE = current_listings

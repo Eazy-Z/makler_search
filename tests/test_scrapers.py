@@ -300,6 +300,51 @@ def test_refresh_changes_skips_communicated_price_change():
     assert [item['title'] for item in changes['price_changed_listings']] == ['Bestehendes Haus']
 
 
+def test_refresh_changes_ignores_equivalent_price_formats_after_acknowledgement():
+    previous = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+            'price_change_communicated': True,
+            'price_change_communicated_price': '875.000 €',
+        }],
+    }
+    current = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875000 EUR',
+            'link': 'https://example.com/expose/1',
+        }],
+    }
+
+    assert app.refresh_changes(previous, current)['price_changed_listings'] == []
+
+
+def test_refresh_changes_reports_a_new_change_after_acknowledgement():
+    previous = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+            'price_change_communicated': True,
+            'price_change_communicated_price': '875.000 €',
+        }],
+    }
+    current = {
+        'broker': [{
+            'title': 'Bestehendes Haus',
+            'price': '850000 EUR',
+            'link': 'https://example.com/expose/1',
+        }],
+    }
+
+    changes = app.refresh_changes(previous, current)
+
+    assert [item['title'] for item in changes['price_changed_listings']] == ['Bestehendes Haus']
+    assert changes['price_changed_listings'][0]['old_price'] == '875.000 €'
+
+
 def test_enrich_listing_history_preserves_communication_without_old_price():
     previous = {
         'broker': [{
