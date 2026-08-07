@@ -110,23 +110,46 @@ def wait_for_refresh_changes(refresh_url):
 def acknowledge_sent_price_changes(refresh_url, changes):
     acknowledged_url = refresh_url.rsplit('/', 1)[0] + '/refresh-email-sent'
     token = os.environ['INTERNAL_REFRESH_TOKEN']
+    expected_count = len({
+        (item.get('broker', ''), item.get('link', '') or item.get('title', ''))
+        for item in changes.get('price_changed_listings', [])
+        if isinstance(item, dict)
+    })
     payload = json.dumps({
         'price_changed_listings': changes.get('price_changed_listings', []),
     }).encode('utf-8')
-    request = Request(
-        acknowledged_url,
-        data=payload,
-        headers={
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-        },
-        method='POST',
-    )
-    with urlopen(request, timeout=30) as response:
-        result = json.loads(response.read().decode('utf-8'))
-    if not result.get('ok'):
-        raise RuntimeError('Backend rejected the sent price-change acknowledgement.')
-    return result.get('acknowledged', 0)
+    last_error = None
+    for attempt in range(3):
+        request = Request(
+            acknowledged_url,
+            data=payload,
+            headers={
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        try:
+            with urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
+            if not result.get('ok'):
+                raise RuntimeError('Backend rejected the sent price-change acknowledgement.')
+            acknowledged = result.get('acknowledged', 0)
+            if acknowledged != expected_count:
+                raise RuntimeError(
+                    f'Backend acknowledged {acknowledged} of {expected_count} sent price changes.'
+                )
+            return acknowledged
+        except (HTTPError, URLError, RuntimeError, ValueError) as error:
+            last_error = error
+            if attempt < 2:
+                logging.warning(
+                    'Price-change acknowledgement attempt %s failed: %s',
+                    attempt + 1,
+                    error,
+                )
+                time.sleep(2 ** attempt)
+    raise last_error
 
 
 @app.timer_trigger(schedule='0 0 * * * *', arg_name='timer')
