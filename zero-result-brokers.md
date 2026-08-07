@@ -14,7 +14,6 @@ The original direct-network inventory contained 23 zero-result brokers. Since th
 - `rogers`: parser repaired with raw-HTML numeric fallbacks for price and area.
 - `bartsch`: parser repaired with alternate area and location field patterns.
 - `schneider`: parser repaired for variable whitespace in price, area, and location fields.
-- `firstplace`: direct Mac-network inspection returned 7 complete listings; no parser change required.
 - `ritter`: direct Mac-network inspection returned 12 complete listings; no parser change required.
 - `hallinger`: source-specific parser and fixture are implemented, but the live domain currently has a TLS certificate failure, so live extraction is not confirmed.
 - `mar`, `dahler`, `krimbacher`, `neuesnest`, `dalexis`, `ausdemhaeuschen`, `feuerlein`, `reischl`, and `gattinger`: retry paths exist, but no additional parser change is justified without a stable live payload or representative fixture.
@@ -46,6 +45,9 @@ These sources expose static listing data and now have source-specific retry hand
 
 ## Confirmed unresolved or blocked
 
+- `deutsche-bank-immobilien`: skipped; the inspected search page did not confirm a stable static/API listing feed.
+- `homeday`: skipped; the inspected search page did not confirm a stable static/API listing feed.
+
 These brokers remain unresolved after repeated parser attempts, with the stated reason:
 
 - `bunzco` (Bunz & Co Immobilien): access blocked with HTTP 403 on the root and `/immobilien/`; no safe public feed identified.
@@ -58,7 +60,6 @@ The following six sources returned proxy tunnel 403 errors during the audit and 
 
 - `schloss` (Schloss)
 - `rogers` (Rogers)
-- `firstplace` (First Place)
 - `bartsch` (Bartsch)
 - `schneider` (Schneider)
 - `ritter` (Ritter Bautraeger Immobilien)

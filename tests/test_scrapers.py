@@ -544,22 +544,6 @@ def test_non_location_labels_are_rejected():
         assert not app.is_clean_location_text(value)
 
 
-def test_firstplace_parser_uses_each_static_offer_block():
-    html = '''<h2>FIRSTPLACE - Wohnung in Aubing</h2>
-    <p>Altaubing, 81245 München</p><p>585.000 €</p><p>88 m²</p>
-    <h2>FIRSTPLACE - Wohnung in Ottobrunn</h2>
-    <p>85521 Ottobrunn, München (Kreis)</p><p>719.000 €</p><p>107 m²</p>'''
-
-    with patch.object(app, 'fetch_html', return_value=html):
-        rows = app.fetch_firstplace_listings()
-
-    assert len(rows) == 2
-    assert rows[0]['title'] == 'Wohnung in Aubing'
-    assert rows[0]['price'] == '585.000 €'
-    assert rows[0]['area_sqm'] == '88'
-    assert rows[1]['price'] == '719.000 €'
-
-
 def test_jalea_parser_accepts_current_frymo_markup():
     overview = '''<article class="frymo-listing-item"><h3 class="frymo-listing-title">
     <a href="/immobilie/test/">Wohnung in Alling</a></h3>
@@ -645,20 +629,9 @@ def test_engel_zero_result_retry_uses_embedded_source_parser():
     )
 
 
-def test_new_sources_return_data():
-    data = app.fetch_listings()
-    assert 'firstplace' in data
-    assert 'bartsch' in data
-    assert 'schneider' in data
-    assert data['firstplace']
-    assert data['bartsch']
-    assert data['schneider']
-
-    for key in ['firstplace', 'bartsch', 'schneider']:
-        first = data[key][0]
-        assert first['title']
-        assert first['price']
-        assert first['link']
+def test_new_sources_are_registered():
+    source_keys = {key for key, _fetcher in app.BROKER_SOURCES}
+    assert {'bartsch', 'schneider'} <= source_keys
 
 
 def test_new_broker_labels_are_registered():
@@ -842,6 +815,44 @@ def test_ramona_neckar_does_not_treat_plot_area_as_living_area():
 
     assert len(rows) == 1
     assert rows[0]['area_sqm'] == ''
+
+
+def test_added_static_brokers_parse_representative_listing_cards():
+    pages = {
+        'service-skimmo': '<a href="/immobilien/haus-service">Familienhaus in München</a><div>Ort: München Wohnfläche: 120 m² Kaufpreis: 875.000 €</div>',
+        'fuchsbau': '<a href="/immobilienangebote/haus-fuchsbau">Haus in Dachau</a><div>Ort: Dachau Wohnfläche: 130 m² Kaufpreis: 875.000 €</div>',
+        'wi-oberbayern': '<a href="/immobilienangebote/haus-wi">Haus in Starnberg</a><div>Ort: Starnberg Wohnfläche: 140 m² Kaufpreis: 875.000 €</div>',
+        'borchers': '<a href="/immobilien/haus-borchers">Haus in Erding</a><div>Ort: Erding Wohnfläche: 150 m² Kaufpreis: 875.000 €</div>',
+        'kpc': '<a href="/immobilienangebote/haus-kpc">Haus in Germering</a><div>Ort: Germering Wohnfläche: 160 m² Kaufpreis: 875.000 €</div>',
+        'schaetz': '<a href="/immobilien/haus-schaetz">Haus in Gauting</a><div>Ort: Gauting Wohnfläche: 170 m² Kaufpreis: 875.000 €</div>',
+        'tell': '<a href="/immobilien-haimhausen/haus-tell">Haus in Haimhausen</a><div>Ort: Haimhausen Wohnfläche: 180 m² Kaufpreis: 875.000 €</div>',
+        'brokavaria': '<a href="/immobilien/haus-brokavaria">Haus in München</a><div>Ort: München Wohnfläche: 190 m² Kaufpreis: 875.000 €</div>',
+        'jannikzimmer': '<a href="/immobilienangebote/haus-jannik">Haus in Freising</a><div>Ort: Freising Wohnfläche: 200 m² Kaufpreis: 875.000 €</div>',
+        'neckar-partner': '<a href="/immobilien/haus-neckar">Haus in Ulm</a><div>Ort: Ulm Wohnfläche: 210 m² Kaufpreis: 875.000 €</div>',
+    }
+    fetchers = {
+        'service-skimmo': app.fetch_service_skimmo_listings,
+        'fuchsbau': app.fetch_fuchsbau_listings,
+        'wi-oberbayern': app.fetch_wi_oberbayern_listings,
+        'borchers': app.fetch_borchers_listings,
+        'kpc': app.fetch_kpc_listings,
+        'schaetz': app.fetch_schaetz_listings,
+        'tell': app.fetch_tell_listings,
+        'brokavaria': app.fetch_brokavaria_listings,
+        'jannikzimmer': app.fetch_jannikzimmer_listings,
+        'neckar-partner': app.fetch_neckar_partner_listings,
+    }
+
+    def fake_fetch(url, timeout=20):
+        return pages[next(key for key in pages if key in url)]
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        for key, fetcher in fetchers.items():
+            rows = fetcher()
+            assert rows[0]['price'] == '875.000 €'
+            assert rows[0]['area_sqm']
+            assert rows[0]['location'] != 'N/A'
+            assert key in rows[0]['link'] or '/immobilien' in rows[0]['link']
 
 
 def test_new_source_parsers_handle_source_specific_markup():

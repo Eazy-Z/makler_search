@@ -55,7 +55,6 @@ LISTINGS_BLOB_ENABLED = (
 )
 SCHLOSS_URL = 'https://schlossberger-immobilien.de/immobilien-angebote/?inx-sort=availability_desc'
 ROGERS_URL = 'https://www.rogers-immobilien.de/immobilienangebote/'
-FIRSTPLACE_URL = 'https://firstplace.de/verkaufsobjekte/'
 BARTSCH_URL = 'https://www.bartsch-immo.de/immobilien-vermarktungsart/kauf/'
 SCHNEIDER_URL = 'https://www.immobilienschneider.com/kaufangebote/'
 IGNORED_BROKERS = {'aigner'}
@@ -502,6 +501,16 @@ HAPPY_IMMO_URL = 'https://www.happy-immo.de/suche-alle-angebote-happy-immo.xhtml
 WANDL_URL = 'https://wandl.immobilien/aktuelle-immobilien/'
 EMSLANDER_URL = 'https://www.emslander-co.de/immobilien/'
 HOSER_URL = 'https://www.hoser-immobilien.de/'
+SERVICE_SKIMMO_URL = 'https://www.service-skimmo.de/immobilien#AktuelleAngebote'
+FUCHSBAU_URL = 'https://fuchsbau-immobilien.com/immobilienangebote/'
+WI_OBERBAYERN_URL = 'https://www.wi-oberbayern.de/immobilienangebote/alle-angebote/'
+BORCHERS_URL = 'https://www.immobilien-borchers.com/kaufen-und-mieten/'
+KPC_URL = 'https://www.kpcimmobilien.de/aktuelle-immobilienangebote/'
+SCHAETZ_URL = 'https://www.schaetz-immobilien.de/immobilien/haeuser/'
+TELL_URL = 'https://www.tell-immobilien.de/immobilien-haimhausen/'
+BROKAVARIA_URL = 'https://brokavaria.de/'
+JANNIKZIMMER_URL = 'https://jannikzimmer.com/immobilienangebote/'
+NECKAR_PARTNER_URL = 'https://neckar-partner.de/immobilien/kaufen'
 FEUERLEIN_URL = 'https://www.feuerlein-immobilien.de/immobilienangebot.html'
 LEBENSTRAUM_URL = 'https://lebenstraum-immobilien.com/suchende/immobilien/muenchen/kaufen/'
 GSCHWENDER_URL = 'https://www.gschwender-immobilien.de/angebote'
@@ -544,7 +553,6 @@ BROKER_LABELS = {
     'bader': 'Bader',
     'schloss': 'Schloss',
     'rogers': 'Rogers',
-    'firstplace': 'First Place',
     'bartsch': 'Bartsch',
     'schneider': 'Schneider',
     'graf': 'Graf Immobilien',
@@ -648,6 +656,16 @@ BROKER_LABELS = {
     'wandl': 'Wandl Immobilien',
     'emslander': 'Emslander & Co',
     'hoser': 'Hoser Immobilien',
+    'service-skimmo': 'Service-SK Immo',
+    'fuchsbau': 'Fuchsbau Immobilien',
+    'wi-oberbayern': 'WI Oberbayern',
+    'borchers': 'Immobilien Borchers',
+    'kpc': 'KPC Immobilien',
+    'schaetz': 'Schaetz Immobilien',
+    'tell': 'Tell Immobilien',
+    'brokavaria': 'Brokavaria Immobilien',
+    'jannikzimmer': 'Jannik Zimmer Immobilien',
+    'neckar-partner': 'Neckar Partner Immobilien',
     'feuerlein': 'Feuerlein Immobilien',
     'lebenstraum': 'Lebenstraum Immobilien',
     'gschwender': 'Gschwender Immobilien',
@@ -1718,30 +1736,6 @@ def fetch_rogers_listings():
         listings.append(item)
 
     return listings[:20]
-
-
-def fetch_firstplace_listings():
-    html = fetch_html(FIRSTPLACE_URL, timeout=25)
-
-    listings = []
-    seen = set()
-    matches = list(re.finditer(r'FIRSTPLACE\s*-\s*([^<]+)', html, re.I))
-    for index, match in enumerate(matches):
-        title = clean_text(match.group(1))
-        if not is_valid_title(title):
-            continue
-        block_end = matches[index + 1].start() if index + 1 < len(matches) else len(html)
-        block = html[match.start():block_end]
-        price_match = re.search(r'(?:Preis|Kaufpreis)?\s*:?[\s\u00a0]*([0-9]{1,3}(?:\.[0-9]{3})*(?:,[0-9]{2})?)\s*€', clean_text(block), re.I)
-        area_match = re.search(r'([0-9.,]+)\s*m²', block, re.I)
-        location_match = re.search(r'\b((?:[A-ZÄÖÜa-zäöüß][^<,]{2,40},\s*)?\d{5}\s+[A-ZÄÖÜa-zäöüß][A-Za-zÄÖÜäöüß\-]+(?:\s+\([^)]*\))?)', clean_text(block))
-
-        price = price_match.group(1) if price_match else ''
-        area = area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
-        location = clean_text(location_match.group(1)) if location_match else ''
-        add_listing(listings, seen, title, price, area, location, f'{FIRSTPLACE_URL}#offer-{index + 1}')
-
-    return listings[:12]
 
 
 def fetch_bartsch_listings():
@@ -3692,6 +3686,46 @@ def fetch_hoser_listings_retry_alt():
     for row in rows:
         row['title'] = re.sub(r'\s+(?:Zum Objekt|Objekt ansehen|Details?)$', '', row.get('title', ''), flags=re.I)
     return rows
+
+
+def fetch_service_skimmo_listings():
+    return fetch_source_specific_broker_listings(SERVICE_SKIMMO_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilien|angebote|angebot|objekt|immobilie|kauf)')
+
+
+def fetch_fuchsbau_listings():
+    return fetch_source_specific_broker_listings(FUCHSBAU_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilienangebote|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_wi_oberbayern_listings():
+    return fetch_source_specific_broker_listings(WI_OBERBAYERN_URL, r'(immobilienangebote|immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilienangebote|alle-angebote|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_borchers_listings():
+    return fetch_source_specific_broker_listings(BORCHERS_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(kaufen-und-mieten|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_kpc_listings():
+    return fetch_source_specific_broker_listings(KPC_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilienangebote|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_schaetz_listings():
+    return fetch_source_specific_broker_listings(SCHAETZ_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilien|haeuser|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_tell_listings():
+    return fetch_source_specific_broker_listings(TELL_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilien-haimhausen|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_brokavaria_listings():
+    return fetch_source_specific_broker_listings(BROKAVARIA_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilien|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_jannikzimmer_listings():
+    return fetch_source_specific_broker_listings(JANNIKZIMMER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilienangebote|immobilie|objekt|expose|angebot|kauf)')
+
+
+def fetch_neckar_partner_listings():
+    return fetch_source_specific_broker_listings(NECKAR_PARTNER_URL, r'(immobilien|kaufen|immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilien|kaufen|immobilie|objekt|expose|angebot|kauf)')
 
 
 def fetch_maurer_listings():
@@ -5943,7 +5977,6 @@ BROKER_SOURCES = [
     ('bader', fetch_bader_listings),
     ('schloss', fetch_schloss_listings),
     ('rogers', fetch_rogers_listings),
-    ('firstplace', fetch_firstplace_listings),
     ('bartsch', fetch_bartsch_listings),
     ('schneider', fetch_schneider_listings),
     ('graf', fetch_graf_listings),
@@ -6047,6 +6080,16 @@ BROKER_SOURCES = [
     ('wandl', lambda: fetch_source_specific_broker_listings(WANDL_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(aktuelle-immobilien|cmd=expose|objekt|immobilie)')),
     ('emslander', lambda: fetch_source_specific_broker_listings(EMSLANDER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilie|objekt|expose|angebot|kauf)')),
     ('hoser', lambda: fetch_external_broker_listings(HOSER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)')),
+    ('service-skimmo', fetch_service_skimmo_listings),
+    ('fuchsbau', fetch_fuchsbau_listings),
+    ('wi-oberbayern', fetch_wi_oberbayern_listings),
+    ('borchers', fetch_borchers_listings),
+    ('kpc', fetch_kpc_listings),
+    ('schaetz', fetch_schaetz_listings),
+    ('tell', fetch_tell_listings),
+    ('brokavaria', fetch_brokavaria_listings),
+    ('jannikzimmer', fetch_jannikzimmer_listings),
+    ('neckar-partner', fetch_neckar_partner_listings),
     ('feuerlein', lambda: fetch_source_specific_broker_listings(FEUERLEIN_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(immobilienangebot|cmd=expose|objekt|immobilie)')),
     ('lebenstraum', fetch_lebenstraum_listings),
     ('gschwender', lambda: fetch_source_specific_broker_listings(GSCHWENDER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)', r'(angebote|cmd=expose|objekt|immobilie)')),
@@ -6150,6 +6193,16 @@ ZERO_RESULT_RETRY_FETCHERS = {
     'seimmobilien': lambda: fetch_zero_broker_detail_crawl(SE_IMMOBILIEN_HAEUSER_URL),
     'wandl': lambda: fetch_zero_broker_detail_crawl(WANDL_URL),
     'hoser': fetch_hoser_listings_retry_alt,
+    'service-skimmo': fetch_service_skimmo_listings,
+    'fuchsbau': fetch_fuchsbau_listings,
+    'wi-oberbayern': fetch_wi_oberbayern_listings,
+    'borchers': fetch_borchers_listings,
+    'kpc': fetch_kpc_listings,
+    'schaetz': fetch_schaetz_listings,
+    'tell': fetch_tell_listings,
+    'brokavaria': fetch_brokavaria_listings,
+    'jannikzimmer': fetch_jannikzimmer_listings,
+    'neckar-partner': fetch_neckar_partner_listings,
     'lebenstraum': fetch_lebenstraum_listings_retry_alt,
     'maurer': lambda: fetch_zero_broker_detail_crawl(MAURER_URL),
     'bechler': fetch_bechler_listings_retry_alt,
