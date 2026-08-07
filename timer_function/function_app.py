@@ -30,6 +30,39 @@ def refresh_status_url(refresh_url):
     return urlunsplit((parsed.scheme, parsed.netloc, '/internal/refresh-status', '', ''))
 
 
+def log_change_details(changes, stage):
+    price_changed = changes.get('price_changed_listings', [])
+    seen = set()
+    for index, item in enumerate(price_changed, start=1):
+        if not isinstance(item, dict):
+            logging.warning(
+                'Price-change report %s contains non-object item at index %s: %r',
+                stage,
+                index,
+                item,
+            )
+            continue
+        broker = item.get('broker', '')
+        link = item.get('link', '')
+        identity = (broker, link or item.get('title', ''))
+        duplicate = identity in seen
+        seen.add(identity)
+        logging.info(
+            'Price-change detail stage=%s index=%s duplicate=%s broker=%r title=%r '
+            'link=%r old_price=%r new_price=%r communicated=%r communicated_price=%r.',
+            stage,
+            index,
+            duplicate,
+            broker,
+            item.get('title', ''),
+            link,
+            item.get('old_price', ''),
+            item.get('price', ''),
+            item.get('price_change_communicated'),
+            item.get('price_change_communicated_price'),
+        )
+
+
 def send_change_email(changes, subject_prefix=''):
     new_listings = changes.get('new_listings', [])
     price_changed = changes.get('price_changed_listings', [])
@@ -40,6 +73,13 @@ def send_change_email(changes, subject_prefix=''):
     if not recipients:
         logging.warning('Listing changes found, but EMAIL_RECIPIENTS is empty.')
         return False
+
+    logging.info(
+        'Preparing listing-change email: new=%s price_changes=%s.',
+        len(new_listings),
+        len(price_changed),
+    )
+    log_change_details(changes, 'before-email')
 
     def listing_line(item, price_label='Preis'):
         title = item.get('title') or 'Immobilie'
@@ -100,7 +140,9 @@ def wait_for_refresh_changes(refresh_url):
         if not payload.get('active'):
             if payload.get('error'):
                 raise RuntimeError(payload['error'])
-            return payload.get('changes', {})
+            changes = payload.get('changes', {})
+            log_change_details(changes, 'refresh-complete')
+            return changes
         time.sleep(5)
     raise TimeoutError(
         f'Timed out waiting {REFRESH_STATUS_TIMEOUT_SECONDS}s for the listing refresh to finish.'
@@ -132,6 +174,13 @@ def acknowledge_sent_price_changes(refresh_url, changes):
         try:
             with urlopen(request, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
+            logging.info(
+                'Price-change acknowledgement response attempt=%s ok=%s acknowledged=%s expected=%s.',
+                attempt + 1,
+                result.get('ok'),
+                result.get('acknowledged'),
+                expected_count,
+            )
             if not result.get('ok'):
                 raise RuntimeError('Backend rejected the sent price-change acknowledgement.')
             acknowledged = result.get('acknowledged', 0)
