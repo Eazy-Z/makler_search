@@ -345,6 +345,25 @@ def test_refresh_changes_reports_a_new_change_after_acknowledgement():
     assert changes['price_changed_listings'][0]['old_price'] == '875.000 €'
 
 
+def test_refresh_changes_suppresses_suspicious_bulk_price_changes():
+    previous = {
+        'broker': [
+            {'title': f'Haus {index}', 'price': '990.000 €', 'link': f'https://example.com/{index}' }
+            for index in range(4)
+        ],
+    }
+    current = {
+        'broker': [
+            {'title': f'Haus {index}', 'price': f'{400 + index}.000 €', 'link': f'https://example.com/{index}' }
+            for index in range(4)
+        ],
+    }
+
+    changes = app.refresh_changes(previous, current)
+
+    assert changes['price_changed_listings'] == []
+
+
 def test_enrich_listing_history_preserves_communication_without_old_price():
     previous = {
         'broker': [{

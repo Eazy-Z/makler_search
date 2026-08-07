@@ -312,10 +312,62 @@ def refresh_changes(previous, current):
                 item['old_price'] = comparable_price(previous_row.get('price', ''))
                 price_changed_listings.append(item)
 
-    return {
+    changes = {
         'new_listings': new_listings,
         'price_changed_listings': price_changed_listings,
     }
+    return suppress_suspicious_price_changes(previous, current, changes)
+
+
+def suppress_suspicious_price_changes(previous, current, changes):
+    changes_by_broker = {}
+    for item in changes.get('price_changed_listings', []):
+        changes_by_broker.setdefault(item.get('broker', ''), []).append(item)
+
+    previous_by_identity = {
+        listing_identity(broker_key, row): row
+        for broker_key, rows in (previous or {}).items()
+        for row in rows or []
+        if isinstance(row, dict)
+    }
+    kept_changes = []
+    for broker_key, broker_changes in changes_by_broker.items():
+        previous_active = [
+            row for row in (previous or {}).get(broker_key, [])
+            if isinstance(row, dict) and not row.get('is_deleted')
+        ]
+        current_rows = [
+            row for row in (current or {}).get(broker_key, [])
+            if isinstance(row, dict) and listing_identity(broker_key, row) in previous_by_identity
+        ]
+        changed_count = len(broker_changes)
+        matched_count = len(current_rows)
+        old_price_counts = {}
+        for item in broker_changes:
+            old_price = comparable_price(item.get('old_price', ''))
+            old_price_counts[old_price] = old_price_counts.get(old_price, 0) + 1
+        repeated_old_price = max(old_price_counts.values(), default=0)
+        is_bulk_change = (
+            changed_count >= 4
+            and matched_count >= 4
+            and changed_count / matched_count >= 0.75
+        )
+        is_repeated_old_price = repeated_old_price >= 4 and repeated_old_price == changed_count
+        if is_bulk_change or is_repeated_old_price:
+            LOGGER.warning(
+                'Suppressed suspicious price-change report for broker=%s: '
+                'changed=%s matched=%s previous_active=%s repeated_old_price=%s.',
+                broker_key,
+                changed_count,
+                matched_count,
+                len(previous_active),
+                repeated_old_price,
+            )
+            continue
+        kept_changes.extend(broker_changes)
+
+    changes['price_changed_listings'] = kept_changes
+    return changes
 
 
 def mark_price_changed_listings(current, changes):
