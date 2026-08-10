@@ -14,15 +14,14 @@ from zoneinfo import ZoneInfo
 import azure.functions as func
 
 app = func.FunctionApp()
-REFRESH_START_HOUR = 6
-REFRESH_END_HOUR = 20
+REFRESH_HOURS = {12, 19}
 REFRESH_TIME_ZONE = os.environ.get('AUTO_REFRESH_TIME_ZONE', 'Europe/Berlin')
 REFRESH_STATUS_TIMEOUT_SECONDS = 900
 
 
 def is_refresh_hour(now=None):
     now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE)) if now is None else now
-    return REFRESH_START_HOUR <= now.hour < REFRESH_END_HOUR
+    return now.hour in REFRESH_HOURS
 
 
 def refresh_status_url(refresh_url):
@@ -201,7 +200,7 @@ def acknowledge_sent_price_changes(refresh_url, changes):
     raise last_error
 
 
-@app.timer_trigger(schedule='0 0 * * * *', arg_name='timer')
+@app.timer_trigger(schedule='0 0 10,11,17,18 * * *', arg_name='timer')
 def refresh_listings(timer: func.TimerRequest) -> None:
     now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE))
     if not is_refresh_hour(now):
