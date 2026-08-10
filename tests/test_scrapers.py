@@ -108,6 +108,28 @@ def test_listing_history_tracks_first_seen_age_and_deleted_note():
     assert row['missing_count'] == 0
 
 
+def test_listing_identity_keeps_anchor_fragments_for_distinct_cards():
+    first = {
+        'link': 'https://example.com/angebote/#offer-1',
+    }
+    second = {
+        'link': 'https://example.com/angebote/#offer-2',
+    }
+
+    assert app.listing_identity('broker', first) != app.listing_identity('broker', second)
+
+
+def test_listing_identity_ignores_non_listing_anchor_fragments():
+    with_fragment = {
+        'link': 'https://example.com/immobilien/wohnung/#price-block-1',
+    }
+    without_fragment = {
+        'link': 'https://example.com/immobilien/wohnung/',
+    }
+
+    assert app.listing_identity('broker', with_fragment) == app.listing_identity('broker', without_fragment)
+
+
 def test_listing_history_marks_missing_offer_only_when_broker_returns_other_rows():
     previous = {
         'broker': [{
@@ -273,6 +295,117 @@ def test_refresh_changes_detects_new_and_price_changed_listings():
     assert changes['price_changed_listings'][0]['old_price'] == '900.000 €'
 
 
+def test_refresh_changes_does_not_repeat_returning_listing_as_new():
+    previous = {
+        'broker': [{
+            'title': 'Bekanntes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+            'note': 'Gelöscht',
+            'is_deleted': True,
+        }],
+    }
+    current = {
+        'broker': [{
+            'title': 'Bekanntes Haus',
+            'price': '875.000 €',
+            'link': 'https://example.com/expose/1',
+        }],
+    }
+
+    changes = app.refresh_changes(previous, current)
+
+    assert changes['new_listings'] == []
+    assert changes['price_changed_listings'] == []
+
+
+def test_broker_duplicates_stay_silent_after_missing_cycles_and_parser_changes():
+    cases = [
+        (
+            'seebauer',
+            'https://www.seebauer-immobilien.de/immobilien/haus-doppelhaushaelfte-in-muenchen-kaufen-g19-1/',
+        ),
+        (
+            'teambim',
+            'https://team-bim.de/immobilien/individuelles-haus-fuer-eine-nette-familie-in-ruhiger-naturnaher-wohnlage',
+        ),
+        (
+            'windhausen',
+            'https://windhausen-partner.de/detailseite/257-gepflegtes-und-grosszuegiges-einfamilienhaus-mit/',
+        ),
+        (
+            'riedl',
+            'https://riedl-makler.de/portfolio-items/phantastische-wohnung-in-neuaubing-an-der-grenze-zu-graefelfing/',
+        ),
+    ]
+
+    for broker, link in cases:
+        history = {
+            broker: [{
+                'title': 'Ursprünglicher Titel',
+                'price': '875.000 €',
+                'area_sqm': '144.45',
+                'link': link,
+                'price_change_communicated': True,
+                'price_change_communicated_price': '875.000 €',
+            }],
+        }
+        other_listing = {
+            broker: [{
+                'title': 'Anderes Angebot',
+                'price': '700.000 €',
+                'link': f'https://example.com/{broker}/other',
+            }],
+        }
+        history = app.enrich_listing_history(history, other_listing, {broker: True}, now=86401)
+        history = app.enrich_listing_history(history, other_listing, {broker: True}, now=172801)
+        returned = {
+            broker: [{
+                'title': 'Geänderter Parser-Titel',
+                'price': '875000 EUR',
+                'area_sqm': '14445',
+                'link': link,
+            }],
+        }
+
+        changes = app.refresh_changes(history, returned)
+
+        assert changes['new_listings'] == []
+        assert changes['price_changed_listings'] == []
+
+
+def test_refresh_changes_tracks_anchor_cards_independently_after_acknowledgement():
+    previous = {
+        'broker': [
+            {
+                'title': 'Wohnung 1',
+                'price': '495.000 €',
+                'link': 'https://example.com/angebote/#offer-1',
+                'price_change_communicated': True,
+                'price_change_communicated_price': '495.000 €',
+            },
+            {
+                'title': 'Wohnung 2',
+                'price': '585.000 €',
+                'link': 'https://example.com/angebote/#offer-2',
+                'price_change_communicated': True,
+                'price_change_communicated_price': '585.000 €',
+            },
+        ],
+    }
+    current = {
+        'broker': [
+            {'title': 'Wohnung 1', 'price': '495000 EUR', 'link': 'https://example.com/angebote/#offer-1'},
+            {'title': 'Wohnung 2', 'price': '585000 EUR', 'link': 'https://example.com/angebote/#offer-2'},
+        ],
+    }
+
+    changes = app.refresh_changes(previous, current)
+
+    assert changes['new_listings'] == []
+    assert changes['price_changed_listings'] == []
+
+
 def test_refresh_changes_skips_communicated_price_change():
     previous = {
         'broker': [{
@@ -418,6 +551,63 @@ def test_acknowledge_price_changes_persists_current_price(monkeypatch):
     assert len(written) == 1
 
 
+def test_acknowledge_price_changes_keeps_anchor_cards_independent():
+    listings = {
+        'broker': [
+            {
+                'title': 'Wohnung 1',
+                'price': '495.000 €',
+                'link': 'https://example.com/angebote/#offer-1',
+            },
+            {
+                'title': 'Wohnung 2',
+                'price': '585.000 €',
+                'link': 'https://example.com/angebote/#offer-2',
+            },
+        ],
+    }
+
+    with patch.object(app, 'LISTINGS_BLOB_ENABLED', False), \
+         patch.object(app, 'LISTINGS_CACHE', listings), \
+         patch.object(app, 'LISTINGS_CACHE_UPDATED_AT', 123), \
+         patch.object(app, 'write_listings_blob'):
+        count = app.acknowledge_price_changes([{
+            'broker': 'broker',
+            'title': 'Wohnung 1',
+            'price': '495.000 €',
+            'link': 'https://example.com/angebote/#offer-1',
+        }])
+
+    assert count == 1
+    assert listings['broker'][0]['price_change_communicated'] is True
+    assert 'price_change_communicated' not in listings['broker'][1]
+
+
+def test_acknowledge_price_changes_rejects_stale_mailed_price():
+    listings = {
+        'broker': [{
+            'title': 'Wohnung 1',
+            'price': '470.000 €',
+            'link': 'https://example.com/angebote/#offer-1',
+        }],
+    }
+
+    with patch.object(app, 'LISTINGS_BLOB_ENABLED', False), \
+         patch.object(app, 'LISTINGS_CACHE', listings), \
+         patch.object(app, 'LISTINGS_CACHE_UPDATED_AT', 123), \
+         patch.object(app, 'write_listings_blob') as write_blob:
+        count = app.acknowledge_price_changes([{
+            'broker': 'broker',
+            'title': 'Wohnung 1',
+            'price': '495.000 €',
+            'link': 'https://example.com/angebote/#offer-1',
+        }])
+
+    assert count == 0
+    assert 'price_change_communicated' not in listings['broker'][0]
+    write_blob.assert_not_called()
+
+
 def test_mark_price_changed_listings_marks_current_rows_and_clears_stale_flags():
     current = {
         'broker': [
@@ -470,6 +660,68 @@ def test_teambim_parser_reads_current_immobilien_slugs():
         'location': 'München',
         'link': 'https://team-bim.de/immobilien/wohnung-muenchen',
     }]
+
+
+def test_teambim_parser_rejects_navigation_pages_and_unlabeled_area():
+    overview = '''<a href="/immobilien/team">Team</a>
+    <a href="/immobilien/wohnung-muenchen">Wohnung</a>'''
+    team_page = '''<title>Team - Wesoly Immobilien</title>
+    <div>Grundstücksfläche 80331 m²</div>'''
+    listing_page = '''<title>Helle Wohnung in München</title>
+    <div>Kaufpreis: 875.000 €</div><div>Grundstücksfläche 80331 m²</div>'''
+
+    def fake_fetch(url, timeout=20):
+        if url.endswith('/team'):
+            return team_page
+        return listing_page if '/wohnung-muenchen' in url else overview
+
+    with patch.object(app, 'fetch_html', side_effect=fake_fetch):
+        rows = app.fetch_teambim_listings_retry_alt()
+
+    assert rows == [{
+        'title': 'Helle Wohnung in München',
+        'price': '875.000 €',
+        'area_sqm': '',
+        'location': 'München',
+        'link': 'https://team-bim.de/immobilien/wohnung-muenchen',
+    }]
+
+
+def test_no_price_detail_retry_requires_explicit_price_signal():
+    overview = '<a href="https://example.com/immobilie/team">Team</a>'
+    detail = '<title>Detailseite - Windhausen &amp; Partner</title><div>Kontakt</div>'
+
+    with patch.object(app, 'fetch_html', side_effect=[overview, detail]):
+        assert app.fetch_no_price_detail_retry(
+            'https://example.com/immobilien/',
+            r'immobilie',
+            r'(immobilie|kontakt)',
+        ) == []
+
+
+def test_wesoly_retry_filters_team_page_from_every_fallback():
+    team = {
+        'title': 'Team - Wesoly Immobilien',
+        'price': 'Preis auf Anfrage',
+        'area_sqm': '',
+        'location': 'Team',
+        'link': 'https://www.wesoly-immobilien.de/team/',
+    }
+    listing = {
+        'title': 'Helle Wohnung in München',
+        'price': '875.000 €',
+        'area_sqm': '80',
+        'location': 'München',
+        'link': 'https://www.wesoly-immobilien.de/immobilien/helle-wohnung/',
+    }
+
+    with patch.object(app, 'fetch_source_specific_with_embedded_retry', return_value=[team, listing]):
+        assert app.fetch_wesoly_listings_retry_alt() == [listing]
+
+    with patch.object(app, 'fetch_source_specific_with_embedded_retry', return_value=[]), \
+         patch.object(app, 'fetch_no_price_detail_retry', return_value=[team]), \
+         patch.object(app, 'fetch_zero_broker_detail_crawl', return_value=[team, listing]):
+        assert app.fetch_wesoly_listings_retry_alt() == [listing]
 
 
 def test_static_property_card_parser_extracts_listing_fields():

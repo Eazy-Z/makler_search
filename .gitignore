@@ -6,3 +6,5 @@ __pycache__/
 *.log
 infra/main.parameters.json
 infra/main.json
+credentials.json
+token.json

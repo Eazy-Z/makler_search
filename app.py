@@ -173,7 +173,9 @@ def format_blob_error(error):
 def listing_identity(broker_key, listing):
     link = clean_text(str((listing or {}).get('link', ''))).rstrip('/').lower()
     if link:
-        link = urlparse(link)._replace(fragment='').geturl().rstrip('/')
+        parsed = urlparse(link)
+        fragment = parsed.fragment if re.match(r'^(?:offer|objekt|unit)-[a-z0-9_-]+$', parsed.fragment) else ''
+        link = parsed._replace(fragment=fragment).geturl().rstrip('/')
     return broker_key, link or clean_text(str((listing or {}).get('title', ''))).lower()
 
 
@@ -298,7 +300,7 @@ def refresh_changes(previous, current):
             previous_row = previous_by_identity.get(identity)
             item = dict(row)
             item['broker'] = broker_key
-            if previous_row is None or previous_row.get('is_deleted'):
+            if previous_row is None:
                 new_listings.append(item)
             elif (
                 comparable_price(previous_row.get('price', '')) != comparable_price(row.get('price', ''))
@@ -1010,6 +1012,10 @@ def normalize_title_from_link(link: str) -> str:
 
 def is_generic_navigation_title(title: str) -> bool:
     normalized = clean_text(title).lower()
+    if re.match(r'^(?:team|detailseite)\s*[-:|]', normalized):
+        return True
+    if normalized.startswith('suchauftrag'):
+        return True
     blocked = {
         'angebote',
         'portfolio items',
@@ -1044,6 +1050,7 @@ def is_generic_navigation_title(title: str) -> bool:
         'verkaufen',
         'vermieten',
         'standorte',
+        'team',
         'ansprechpartner',
         'finanzierung',
         'verfügbar kauf',
@@ -1357,6 +1364,15 @@ def extract_area_text(text: str) -> str:
     area_match = re.search(r'([0-9][0-9.,]*)\s*m²', text, re.I)
     if not area_match:
         area_match = re.search(r'([0-9][0-9.,]*)\s*m\b', text, re.I)
+    return area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
+
+
+def extract_labeled_area_text(text: str) -> str:
+    area_match = re.search(
+        r'(?:Wohn|Nutz)\s*fl(?:ä|ae)che\s*:?[\s\S]{0,40}?([0-9][0-9.,]*)\s*(?:m²|qm|m\b)',
+        text,
+        re.I,
+    )
     return area_match.group(1).replace('.', '').replace(',', '.') if area_match else ''
 
 
@@ -3216,7 +3232,7 @@ def fetch_no_price_detail_retry(base_url: str, href_hint: str, detail_signal_hin
         elif re.search(r'preis\s+auf\s+anfrage|auf\s+anfrage', detail_text, re.I):
             price = 'Preis auf Anfrage'
         else:
-            price = 'Preis auf Anfrage'
+            continue
 
         area = extract_area_text(detail_text)
         location = extract_location_text(detail_text, '')
@@ -3842,9 +3858,9 @@ def fetch_teambim_listings_retry_alt():
             detail_html = ''
         detail_text = clean_text(detail_html)
         title = extract_page_title(detail_html) if detail_html else normalize_title_from_link(href)
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             title = normalize_title_from_link(href)
-        if not is_valid_title(title):
+        if not is_valid_title(title) or is_generic_navigation_title(title):
             continue
 
         price_match = re.search(
@@ -3858,7 +3874,7 @@ def fetch_teambim_listings_retry_alt():
                 detail_text,
                 re.I,
             )
-        area = extract_area_text(detail_text)
+        area = extract_labeled_area_text(detail_text)
         location = extract_location_text(detail_text, '')
         if not is_clean_location_text(location):
             location = extract_location_from_title(title)
@@ -3882,6 +3898,7 @@ def fetch_wesoly_listings_retry_alt():
         r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung|haeuser|wohnungen)',
         r'(immobilienangebote-zum-kauf|angebote|kauf|objekt|immobilie|detail|expose)',
     )
+    rows = filter_wesoly_listings(rows)
     if rows:
         return rows[:12]
 
@@ -3890,9 +3907,19 @@ def fetch_wesoly_listings_retry_alt():
         r'(immobilie|objekt|angebot|kauf|wohnen|haus|wohnung|expose|detail)',
         r'(immobilie|objekt|kaufpreis|preis|wohnfl(?:ä|ae)che|lage|standort|zimmer|m²|qm)',
     )
+    rows = filter_wesoly_listings(rows)
     if rows:
         return rows[:12]
-    return fetch_zero_broker_detail_crawl(WESOLY_URL)
+    return filter_wesoly_listings(fetch_zero_broker_detail_crawl(WESOLY_URL))[:12]
+
+
+def filter_wesoly_listings(rows):
+    return [
+        row for row in rows or []
+        if isinstance(row, dict)
+        and not is_generic_navigation_title(row.get('title', ''))
+        and not re.search(r'/(?:team|suchauftrag|kontakt|ueber-uns|über-uns)/?(?:[?#]|$)', row.get('link', ''), re.I)
+    ]
 
 
 def fetch_lebenstraum_listings_retry_alt():
@@ -6410,12 +6437,12 @@ def refresh_status_payload(include_listings=False):
 def acknowledge_price_changes(acknowledged):
     global LISTINGS_CACHE, LISTINGS_CACHE_TIME, LISTINGS_CACHE_UPDATED_AT
 
-    acknowledged_ids = {
-        listing_identity(item.get('broker', ''), item)
+    acknowledged_prices = {
+        listing_identity(item.get('broker', ''), item): comparable_price(item.get('price', ''))
         for item in (acknowledged or [])
         if isinstance(item, dict)
     }
-    if not acknowledged_ids:
+    if not acknowledged_prices:
         return 0
 
     current_listings = LISTINGS_CACHE or {}
@@ -6438,9 +6465,12 @@ def acknowledge_price_changes(acknowledged):
     changed_count = 0
     for broker_key, rows in (current_listings or {}).items():
         for row in rows or []:
-            if listing_identity(broker_key, row) in acknowledged_ids:
+            identity = listing_identity(broker_key, row)
+            acknowledged_price = acknowledged_prices.get(identity)
+            current_price = comparable_price(row.get('price', ''))
+            if acknowledged_price and acknowledged_price == current_price:
                 row['price_change_communicated'] = True
-                row['price_change_communicated_price'] = comparable_price(row.get('price', ''))
+                row['price_change_communicated_price'] = acknowledged_price
                 changed_count += 1
     if changed_count:
         LISTINGS_CACHE = current_listings
