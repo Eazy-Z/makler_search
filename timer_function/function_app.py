@@ -3,6 +3,7 @@ import json
 import os
 import smtplib
 import time
+import uuid
 from datetime import datetime
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -16,6 +17,9 @@ import azure.functions as func
 app = func.FunctionApp()
 REFRESH_HOURS = {12, 19}
 REFRESH_TIME_ZONE = os.environ.get('AUTO_REFRESH_TIME_ZONE', 'Europe/Berlin')
+BACKEND_REFRESH_REQUEST_TIMEOUT_SECONDS = int(
+    os.environ.get('BACKEND_REFRESH_REQUEST_TIMEOUT_SECONDS', '90')
+)
 REFRESH_STATUS_TIMEOUT_SECONDS = 900
 
 
@@ -202,48 +206,109 @@ def acknowledge_sent_price_changes(refresh_url, changes):
 
 @app.timer_trigger(schedule='0 0 10,11,17,18 * * *', arg_name='timer')
 def refresh_listings(timer: func.TimerRequest) -> None:
+    run_id = uuid.uuid4().hex[:12]
+    started_at = time.monotonic()
     now = datetime.now(ZoneInfo(REFRESH_TIME_ZONE))
+    logging.info(
+        'Automatic listing refresh started: run_id=%s scheduled_local=%s past_due=%s.',
+        run_id,
+        now.isoformat(),
+        getattr(timer, 'past_due', None),
+    )
     if not is_refresh_hour(now):
-        logging.info('Automatic listing refresh skipped at %s.', now.isoformat())
+        logging.info(
+            'Automatic listing refresh skipped: run_id=%s reason=outside_refresh_hours elapsed_ms=%s.',
+            run_id,
+            int((time.monotonic() - started_at) * 1000),
+        )
         return
 
     refresh_url = os.environ['BACKEND_REFRESH_URL']
     refresh_token = os.environ['INTERNAL_REFRESH_TOKEN']
+    refresh_host = urlsplit(refresh_url).netloc or '<invalid-url>'
     request = Request(
         refresh_url,
         headers={'Authorization': f'Bearer {refresh_token}'},
         method='POST',
     )
     try:
-        with urlopen(request, timeout=30) as response:
+        request_started_at = time.monotonic()
+        logging.info(
+            'Backend refresh request started: run_id=%s host=%s timeout_seconds=%s.',
+            run_id,
+            refresh_host,
+            BACKEND_REFRESH_REQUEST_TIMEOUT_SECONDS,
+        )
+        with urlopen(request, timeout=BACKEND_REFRESH_REQUEST_TIMEOUT_SECONDS) as response:
             refresh_response = json.loads(response.read().decode('utf-8'))
             logging.info(
-                'Automatic listing refresh accepted with HTTP %s.',
+                'Backend refresh request completed: run_id=%s http_status=%s elapsed_ms=%s started=%s.',
+                run_id,
                 response.status,
+                int((time.monotonic() - request_started_at) * 1000),
+                refresh_response.get('started'),
             )
         if not refresh_response.get('started'):
-            logging.info('Listing refresh was already active; email delivery belongs to the active refresh.')
+            logging.info(
+                'Automatic listing refresh ended: run_id=%s reason=refresh_already_active elapsed_ms=%s.',
+                run_id,
+                int((time.monotonic() - started_at) * 1000),
+            )
             return
+        refresh_started_at = time.monotonic()
         changes = wait_for_refresh_changes(refresh_url)
         new_count = len(changes.get('new_listings', []))
         price_count = len(changes.get('price_changed_listings', []))
         logging.info(
-            'Automatic listing refresh completed with %s new listings and %s price changes.',
+            'Listing refresh polling completed: run_id=%s elapsed_ms=%s new=%s price_changes=%s.',
+            run_id,
+            int((time.monotonic() - refresh_started_at) * 1000),
             new_count,
             price_count,
         )
         if send_change_email(changes):
             acknowledged_count = acknowledge_sent_price_changes(refresh_url, changes)
-            logging.info('Acknowledged %s sent price changes.', acknowledged_count)
-            logging.info('Listing change email sent.')
+            logging.info(
+                'Listing change email sent: run_id=%s new=%s price_changes=%s acknowledged=%s total_elapsed_ms=%s.',
+                run_id,
+                new_count,
+                price_count,
+                acknowledged_count,
+                int((time.monotonic() - started_at) * 1000),
+            )
         else:
-            logging.info('No listing change email sent because the change report was empty or recipients were missing.')
+            logging.info(
+                'No listing change email sent: run_id=%s new=%s price_changes=%s total_elapsed_ms=%s.',
+                run_id,
+                new_count,
+                price_count,
+                int((time.monotonic() - started_at) * 1000),
+            )
     except smtplib.SMTPException:
-        logging.exception('Listing change email failed during SMTP delivery.')
+        logging.exception(
+            'Automatic listing refresh failed: run_id=%s phase=email_delivery elapsed_ms=%s.',
+            run_id,
+            int((time.monotonic() - started_at) * 1000),
+        )
         raise
     except HTTPError:
-        logging.exception('Backend rejected the automatic listing refresh.')
+        logging.exception(
+            'Automatic listing refresh failed: run_id=%s phase=backend_http elapsed_ms=%s.',
+            run_id,
+            int((time.monotonic() - started_at) * 1000),
+        )
         raise
     except URLError:
-        logging.exception('Backend was unreachable for the automatic listing refresh.')
+        logging.exception(
+            'Automatic listing refresh failed: run_id=%s phase=backend_connection elapsed_ms=%s.',
+            run_id,
+            int((time.monotonic() - started_at) * 1000),
+        )
+        raise
+    except Exception:
+        logging.exception(
+            'Automatic listing refresh failed: run_id=%s phase=unexpected elapsed_ms=%s.',
+            run_id,
+            int((time.monotonic() - started_at) * 1000),
+        )
         raise
