@@ -550,8 +550,38 @@ ZARDINI_HAEUSER_URL = 'https://www.zardini-immobilien.de/haeuser.xhtml'
 ZARDINI_WOHNUNGEN_URL = 'https://www.zardini-immobilien.de/wohnungen.xhtml'
 REISCHL_URL = 'https://www.reischl-immobilien.de/objects.php'
 GATTINGER_URL = 'https://gattinger-immo.de/angebote'
+CLAVIS_URL = 'https://www.clavisimmobilien.de/immobilien-muenchen-kaufen/'
+FLEMMER_URL = 'https://www.flemmer-immobilien.de/angebote/'
+FBC_URL = 'https://fbcimmobilien.de/angebot/'
+FLEMMER_URL = 'https://www.flemmer-immobilien.de/angebote/'
+FMC_URL = 'https://www.fmcag.de/immobilienangebote.xhtml'
+KOLB_URL = 'https://immo-kolb.de/immobilien-vermarktungsart/kauf/'
+MNORD_URL = 'https://immobilien-mnord.de/immobiliensuche/'
+IMMOSPACE_URL = 'https://www.immo-space.com/angebote/'
+LAYER_URL = 'https://layer-gruppe.de/immobilien'
+MIA_CASA_URL = 'https://mia-casa-immobilien.de/immobilien/'
+ENOVIAHAUS_URL = 'https://enoviahaus.de/angebot'
+GARANT_URL = 'https://www.garant-immo.de/immobilien'
+IMMOVISION_URL = 'https://www.immovision.de/immobilien'
+LANZL_URL = 'https://lanzl-immobilien.de/immobilienangebote'
+RAUM_URL = 'https://raum-immobilien.de/immobilie-kaufen/'
+IMMOCOM_URL = 'https://immocom.org/immobilien/'
+RIMALDI_URL = 'https://www.rimaldi.de/immobilien-vermarktungsart/kauf/'
+RUDEK_URL = 'https://rudek.immo/immobilienangebot'
+SEFFEN_URL = 'https://seffen.immo/immobilien/'
+SIEBENLIST_URL = 'https://www.siebenlist-immobilien.de/angebote'
+HATTON_URL = 'https://hatton-immobilien.de/crbst_5.html'
+SZIKORA_URL = 'https://www.szikora-immobilien.de/'
 UNKNOWN_LOCATION = 'N/A'
 BROKER_LABELS = {
+    'clavis': 'Clavis Immobilien',
+    'flemmer': 'Flemmer Immobilien',
+    'kolb': 'Immobilien Kolb',
+    'mnord': 'Immobilien M-Nord',
+    'lanzl': 'Lanzl Immobilien',
+    'raum': 'Raum Immobilien',
+    'seffen': 'Seffen Immobilien',
+    'siebenlist': 'Siebenlist Immobilien',
     'bader': 'Bader',
     'schloss': 'Schloss',
     'rogers': 'Rogers',
@@ -1596,6 +1626,68 @@ def parse_link_cards(base_url: str, html: str, href_hint: str = r'(immobilie|obj
         add_listing(listings, seen, title, price, area, location, href)
 
     return listings[:12]
+
+
+STATIC_FAMILY_SOURCES = {
+    'clavis': (CLAVIS_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'clavisimmobilien.de'),
+    'flemmer': (FLEMMER_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'flemmer-immobilien.de'),
+    'kolb': (KOLB_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'immo-kolb.de'),
+    'mnord': (MNORD_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'immobilien-mnord.de'),
+    'lanzl': (LANZL_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'lanzl-immobilien.de'),
+    'raum': (RAUM_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'raum-immobilien.de'),
+    'seffen': (SEFFEN_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'seffen.immo'),
+    'siebenlist': (SIEBENLIST_URL, r'/immobil(?:ie|ien)/|/objekt|/expose', 'siebenlist-immobilien.de'),
+}
+
+
+def parse_static_family_cards(base_url: str, html: str, detail_pattern: str, allowed_host: str):
+    listings = []
+    seen = set()
+    anchors = list(re.finditer(r'<a\b[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html, re.I | re.S))
+    for index, match in enumerate(anchors):
+        href = urljoin(base_url, clean_text(match.group(1)))
+        parsed = urlparse(href)
+        if parsed.hostname != allowed_host and parsed.hostname != f'www.{allowed_host}':
+            continue
+        if not re.search(detail_pattern, parsed.path, re.I) or re.search(r'(?:mieten|miet|rent|suche|impressum|datenschutz)', href, re.I):
+            continue
+        end = anchors[index + 1].start() if index + 1 < len(anchors) else len(html)
+        chunk = html[match.start():end]
+        text = clean_text(chunk)
+        price_match = re.search(r'Kaufpreis\s*:?[\s\u00a0]*([0-9.]+(?:[,.][0-9]{2})?|auf Anfrage)', text, re.I)
+        area_match = re.search(r'Wohnfl(?:ä|ae)che\s*:?[\s\u00a0]*(?:ca\.?\s*)?([0-9.,]+)\s*m(?:²|2)?', text, re.I)
+        if not price_match or not area_match:
+            continue
+        title = clean_text(match.group(2))
+        if not is_valid_title(title) or is_generic_navigation_title(title):
+            title = normalize_title_from_link(href)
+        if not is_valid_title(title) or is_generic_navigation_title(title):
+            continue
+        location_match = re.search(
+            r'(?:Ort|Lage|Standort|Stadt)\s*:?\s*([^|<\n]+?)(?=\s+(?:Kaufpreis|Preis|Wohnfl(?:ä|ae)che)\b|$)',
+            text,
+            re.I,
+        )
+        location = clean_text(location_match.group(1)) if location_match else ''
+        add_listing(
+            listings,
+            seen,
+            title,
+            price_match.group(1),
+            area_match.group(1).replace('.', '').replace(',', '.'),
+            location,
+            href,
+        )
+    return listings[:12]
+
+
+def fetch_static_family_listings(source_key):
+    base_url, detail_pattern, allowed_host = STATIC_FAMILY_SOURCES[source_key]
+    try:
+        html = fetch_html(base_url)
+    except Exception:
+        return []
+    return parse_static_family_cards(base_url, html, detail_pattern, allowed_host)
 
 
 def fetch_bader_listings():
@@ -6001,6 +6093,14 @@ def fetch_zardini_listings():
 
 
 BROKER_SOURCES = [
+    ('clavis', lambda: fetch_static_family_listings('clavis')),
+    ('flemmer', lambda: fetch_static_family_listings('flemmer')),
+    ('kolb', lambda: fetch_static_family_listings('kolb')),
+    ('mnord', lambda: fetch_static_family_listings('mnord')),
+    ('lanzl', lambda: fetch_static_family_listings('lanzl')),
+    ('raum', lambda: fetch_static_family_listings('raum')),
+    ('seffen', lambda: fetch_static_family_listings('seffen')),
+    ('siebenlist', lambda: fetch_static_family_listings('siebenlist')),
     ('bader', fetch_bader_listings),
     ('schloss', fetch_schloss_listings),
     ('rogers', fetch_rogers_listings),

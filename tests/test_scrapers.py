@@ -13,6 +13,34 @@ def test_format_price_handles_schneider_style_values():
     assert app.format_price('2.495.000 €') == '2.495.000 €'
 
 
+def test_static_family_parser_keeps_buy_cards_and_rejects_rent_navigation():
+    html = '''<nav><a href="/immobilien/">Immobilien</a><a href="/mieten/wohnung">Mieten</a></nav>
+    <article><a href="/immobilien/haus-in-gauting/">Haus in Gauting</a>
+    <div>Kaufpreis: 1.200.000 EUR</div><div>Wohnfläche: 140 m²</div><div>Ort: Gauting</div></article>
+    <article><a href="/immobilien/wohnung-mieten/">Wohnung mieten</a>
+    <div>Kaltmiete: 1.800 EUR</div><div>Wohnfläche: 80 m²</div></article>'''
+
+    rows = app.parse_static_family_cards(
+        'https://www.clavisimmobilien.de/immobilien-muenchen-kaufen/',
+        html,
+        r'/immobil(?:ie|ien)/|/objekt|/expose',
+        'www.clavisimmobilien.de',
+    )
+
+    assert rows == [{
+        'title': 'Haus in Gauting',
+        'price': '1.200.000 €',
+        'area_sqm': '140',
+        'location': 'Gauting',
+        'link': 'https://www.clavisimmobilien.de/immobilien/haus-in-gauting/',
+    }]
+
+
+def test_static_family_sources_register_flemmer():
+    assert app.STATIC_FAMILY_SOURCES['flemmer'][0] == 'https://www.flemmer-immobilien.de/angebote/'
+    assert sum(source[0] == 'flemmer' for source in app.BROKER_SOURCES) == 1
+
+
 def test_static_zero_result_broker_parsers_accept_current_field_markup():
     schloss = '''<div class="inx-property-list__item-wrap"><div><div><div>
     <div class="inx-property-list-item__title"><a href="/immobilien/haus">Haus in München</a></div>

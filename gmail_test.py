@@ -84,12 +84,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analysiert gesendete Makler-Search-Mails.")
     parser.add_argument("--max-results", type=int, default=20)
     parser.add_argument("--query", default="in:sent")
+    parser.add_argument("--token-file", type=Path, default=TOKEN_FILE)
     args = parser.parse_args()
 
     credentials = None
 
-    if TOKEN_FILE.exists():
-        credentials = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    if args.token_file.exists():
+        credentials = Credentials.from_authorized_user_file(args.token_file, SCOPES)
 
     if credentials is None or not credentials.valid:
         if credentials and credentials.expired and credentials.refresh_token:
@@ -101,7 +102,7 @@ def main() -> None:
             )
             credentials = flow.run_local_server(port=0)
 
-        TOKEN_FILE.write_text(credentials.to_json())
+        args.token_file.write_text(credentials.to_json())
 
     gmail = build("gmail", "v1", credentials=credentials)
     profile = gmail.users().getProfile(userId="me").execute()

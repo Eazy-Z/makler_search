@@ -96,100 +96,222 @@ H�user zum Kauf | Sopart Immobilien GmbH
 #https://www.dawonia.de/de/kaufen
 #https://orange-immobilien.de/immobilien?sectionId=69046b637c7cacf55d10a875&fields%5Bgeneral_vermarktungsart%5D=KAUF&fields%5Bgeneral_umkreissuche%5D%5Bloc%5D=M%C3%BCnchen&fields%5Bgeneral_umkreissuche%5D%5Bdistance%5D=25
 #https://vorstadtmakler.de/immobilien
-https://team-bim.de/#imag_immobiliensuche
-https://www.sozius-immobilien.de/immobilien/wohnen/
-https://www.andreas-schmid-immobilien.de/alle-immobilien/
-https://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html
-https://www.akurat.net/immobilienangebote/
-https://www.ausdemhaeuschen.com/angebot
-https://www.sopart-immobilien.de/index.php4?cmd=searchResults&goto=1&alias=suchmaske&aktwaehrung=%80&kaufartids=&kategorieids=200&ortnamegenau=&flaecheKatAbhaengigMin=32.00&flaecheKatAbhaengigMax=481.00&preisMin=0.00&preisMax=1790000.00&zimmerMin=0.00&zimmerMax=7.00&objq%5Border_zusammen%5D=&objqorder_zusammen=#sprung_modul_suchmakse_0
-https://graef-immo.de/immobilienangebote-kauf/
-https://www.duerrenberger-immobilien.de/Haeuser-zum-Kauf.htm
-https://www.hallingerimmobilien.de/kaufobjekte.php
-https://cki-immobilien.de/immobilienangebote/kaufen/
-https://windisch-immobilien.de/kaufen/alle-angebote/https://windisch-immobilien.de/kaufen/alle-angebote/
-https://www.sopart-immobilien.de/haeuser-zum-kauf
-https://www.sopart-immobilien.de/wohnungen-zum-kauf
-https://www.im7-gmbh.de/KAUF.htm
-https://www.se-immobilienmakler.de/Eigentumswohnungen.htm
-https://www.se-immobilienmakler.de/Haeuser-zum-Kauf.htm
-https://www.gg-immobilien.de/angebote/immobilienangebote/
-https://georgi-immobilien.com/immobilien/
-https://www.happy-immo.de/suche-alle-angebote-happy-immo.xhtml?f[1581-24]=kauf
-https://www.weichselgartner-immo.de/kaufen/haeuser/
-https://www.rogers-immobilien.de/immobilienangebote/
-https://rohrer-firmengruppe.de/immobilien-vermarktung/immobilien.html
-https://www.ftimmobilien24.com/aktuelle-immobilien/bestandsobjekte/
-https://www.fischer-immobilien-muenchen.de/immobilien/
-https://citigrund.de/immobilie-kaufen-muenchen/
-https://wandl.immobilien/aktuelle-immobilien/ 
-https://www.emslander-co.de/immobilien/
-https://hirschmann-kaul.de/kaufen/
-https://neuesnest.de/aktuelle-immobilien/
-https://www.hoser-immobilien.de/
-https://www.wohnref-muenchen.de/immobilien/
-https://www.feuerlein-immobilien.de/immobilienangebot.html
-https://lebenstraum-immobilien.com/suchende/immobilien/muenchen/kaufen/
-https://www.gschwender-immobilien.de/angebote
-https://www.maurerimmobilien.de/Angebote.htm#
-https://www.pscheidt-immobilien.com/haeuser.xhtml
-https://www.pscheidt-immobilien.com/wohnungen.xhtml
-https://www.bechler-immobilien.de/verkauf-vermietung/#kauf
-https://isarestate.de/angebot/
-https://www.wesoly-immobilien.de/immobilienangebote-zum-kauf/
-https://www.immobilienwestend.de/Haeuser-zum-Kauf.htm
-https://www.stierling-immobilien.de/zum-kauf/
-https://pienzenauer-immobilien.de/immobilien/?inx-search-marketing-type=zu-verkaufen&inx-search-price-range=%5B0%2C4000000%2C0%2C3990000%5D
-https://www.finestep.de/immobilien/?post_type=immomakler_object&paged=1&vermarktungsart=kauf&nutzungsart=&typ=&ort=&center=&objekt-id=
-https://www.immobilien-schmidt-muenchen.de/angebote-kaufen-mieten
-https://www.fair-homes.immo/immobilien-kauf
-https://www.roethig-immobilien.de/angebote/verkauf/
-https://www.maierimmobilien.de/immobilien/
-https://www.heidtmann-immobilien.de/fuer-interessenten/immobilienangebote/
-https://www.chalet-immobilien.com/Angebote.htm
-https://neuesnest.de/aktuelle-immobilien/
-https://www.kraft-ziller.de/Haeuser-zum-Kauf.htm
-https://wolf-immobilien.online/wohnung-kaufen/
-https://wolf-immobilien.online/haus-kaufen/
-https://bayergrund-immo.de/angebote/
-https://www.immobilien-ps.de/angebote
-https://www.rsi-immobilien.de/angebote/bestandsimmobilien/einfamilienhaeuser/
-https://www.rsi-immobilien.de/angebote/bestandsimmobilien/mehrfamilienhauser/
-https://www.rsi-immobilien.de/angebote/bestandsimmobilien/wohnungen/
-https://siemax.de/immobilien/?post_type=immomakler_object&paged=1&vermarktungsart%5B%5D=kauf&center=&objekt-id=&collapse=in&von-qm=0.00&bis-qm=4200.00&von-zimmer=0.00&bis-zimmer=20.00&von-kaltmiete=0.00&bis-kaltmiete=3600.00&von-kaufpreis=0.00&bis-kaufpreis=4625000.00
-https://graef-immo.de/immobilienangebote-kauf/
-https://www.im7-gmbh.de/KAUF.htm
-https://josef-frei-immobilien.de/objekte/eigentumswohnungen/
-https://josef-frei-immobilien.de/objekte/haeuser/
-https://drescher-immobilien.de/kaufangebote
-https://www.luenendonk-immobilien.de/Objekte.htm
-https://www.duerrenberger-immobilien.de/Angebote.htm
-https://www.harinali.de/immobilienangebote/
-https://www.aufrecht-immo.de/immobilien?t=2&o=&st=buy&pr=&qm=&r=
-https://www.aufrecht-immo.de/immobilien?t=1&o=&st=buy&pr=&qm=&r=
-https://www.ramonaneckar-immobilien.de/angebote
-https://www.mytropper-immobilien.de/index.php4?cmd=searchResults&goto=1&alias=suchmaske&aktwaehrung=%80&kaufartids=1&kategorieids=&ortnamegenau=&flaecheKatAbhaengigMin=35.00&flaecheKatAbhaengigMax=686.00&preisMin=11.00&preisMax=1985000.00&zimmerMin=0.00&zimmerMax=15.00&objq%5Border_zusammen%5D=&objqorder_zusammen=#sprung_modul_suchmakse_0
-https://www.sri-immo.de/immobilien-kaufen-mieten.html
-https://www.immoservice-eder.de/immobilien-angebote/
-https://zg-immobilien.de/
-https://www.zardini-immobilien.de/haeuser.xhtml
-https://www.zardini-immobilien.de/wohnungen.xhtml
-https://www.reischl-immobilien.de/objects.php
-https://gattinger-immo.de/angebote
-https://www.dawonia.de/de/kaufen
+#https://team-bim.de/#imag_immobiliensuche
+#https://www.sozius-immobilien.de/immobilien/wohnen/
+#https://www.andreas-schmid-immobilien.de/alle-immobilien/
+#https://www.muenchner-immobilien.eu/muenchner-immobilien-angebot-verkauf_haeuser.html
+#https://www.akurat.net/immobilienangebote/
+#https://www.ausdemhaeuschen.com/angebot
+#https://www.sopart-immobilien.de/index.php4?cmd=searchResults&goto=1&alias=suchmaske&aktwaehrung=%80&kaufartids=&kategorieids=200&ortnamegenau=&flaecheKatAbhaengigMin=32.00&flaecheKatAbhaengigMax=481.00&preisMin=0.00&preisMax=1790000.00&zimmerMin=0.00&zimmerMax=7.00&objq%5Border_zusammen%5D=&objqorder_zusammen=#sprung_modul_suchmakse_0
+#https://graef-immo.de/immobilienangebote-kauf/
+#https://www.duerrenberger-immobilien.de/Haeuser-zum-Kauf.htm
+#https://www.hallingerimmobilien.de/kaufobjekte.php
+#https://cki-immobilien.de/immobilienangebote/kaufen/
+#https://windisch-immobilien.de/kaufen/alle-angebote/https://windisch-immobilien.de/kaufen/alle-angebote/
+#https://www.sopart-immobilien.de/haeuser-zum-kauf
+#https://www.sopart-immobilien.de/wohnungen-zum-kauf
+#https://www.im7-gmbh.de/KAUF.htm
+#https://www.se-immobilienmakler.de/Eigentumswohnungen.htm
+#https://www.se-immobilienmakler.de/Haeuser-zum-Kauf.htm
+#https://www.gg-immobilien.de/angebote/immobilienangebote/
+#https://georgi-immobilien.com/immobilien/
+#https://www.happy-immo.de/suche-alle-angebote-happy-immo.xhtml?f[1581-24]=kauf
+#https://www.weichselgartner-immo.de/kaufen/haeuser/
+#https://www.rogers-immobilien.de/immobilienangebote/
+#https://rohrer-firmengruppe.de/immobilien-vermarktung/immobilien.html
+#https://www.ftimmobilien24.com/aktuelle-immobilien/bestandsobjekte/
+#https://www.fischer-immobilien-muenchen.de/immobilien/
+#https://citigrund.de/immobilie-kaufen-muenchen/
+#https://wandl.immobilien/aktuelle-immobilien/ 
+#https://www.emslander-co.de/immobilien/
+#https://hirschmann-kaul.de/kaufen/
+#https://neuesnest.de/aktuelle-immobilien/
+#https://www.hoser-immobilien.de/
+#https://www.wohnref-muenchen.de/immobilien/
+#https://www.feuerlein-immobilien.de/immobilienangebot.html
+#https://lebenstraum-immobilien.com/suchende/immobilien/muenchen/kaufen/
+#https://www.gschwender-immobilien.de/angebote
+#https://www.maurerimmobilien.de/Angebote.htm#
+#https://www.pscheidt-immobilien.com/haeuser.xhtml
+#https://www.pscheidt-immobilien.com/wohnungen.xhtml
+#https://www.bechler-immobilien.de/verkauf-vermietung/#kauf
+#https://isarestate.de/angebot/
+#https://www.wesoly-immobilien.de/immobilienangebote-zum-kauf/
+#https://www.immobilienwestend.de/Haeuser-zum-Kauf.htm
+#https://www.stierling-immobilien.de/zum-kauf/
+#https://pienzenauer-immobilien.de/immobilien/?inx-search-marketing-type=zu-verkaufen&inx-search-price-range=%5B0%2C4000000%2C0%2C3990000%5D
+#https://www.finestep.de/immobilien/?post_type=immomakler_object&paged=1&vermarktungsart=kauf&nutzungsart=&typ=&ort=&center=&objekt-id=
+#https://www.immobilien-schmidt-muenchen.de/angebote-kaufen-mieten
+#https://www.fair-homes.immo/immobilien-kauf
+#https://www.roethig-immobilien.de/angebote/verkauf/
+#https://www.maierimmobilien.de/immobilien/
+#https://www.heidtmann-immobilien.de/fuer-interessenten/immobilienangebote/
+#https://www.chalet-immobilien.com/Angebote.htm
+#https://neuesnest.de/aktuelle-immobilien/
+#https://www.kraft-ziller.de/Haeuser-zum-Kauf.htm
+#https://wolf-immobilien.online/wohnung-kaufen/
+#https://wolf-immobilien.online/haus-kaufen/
+#https://bayergrund-immo.de/angebote/
+#https://www.immobilien-ps.de/angebote
+#https://www.rsi-immobilien.de/angebote/bestandsimmobilien/einfamilienhaeuser/
+#https://www.rsi-immobilien.de/angebote/bestandsimmobilien/mehrfamilienhauser/
+#https://www.rsi-immobilien.de/angebote/bestandsimmobilien/wohnungen/
+#https://siemax.de/immobilien/?post_type=immomakler_object&paged=1&vermarktungsart%5B%5D=kauf&center=&objekt-id=&collapse=in&von-qm=0.00&bis-qm=4200.00&von-zimmer=0.00&bis-zimmer=20.00&von-kaltmiete=0.00&bis-kaltmiete=3600.00&von-kaufpreis=0.00&bis-kaufpreis=4625000.00
+#https://graef-immo.de/immobilienangebote-kauf/
+#https://www.im7-gmbh.de/KAUF.htm
+#https://josef-frei-immobilien.de/objekte/eigentumswohnungen/
+#https://josef-frei-immobilien.de/objekte/haeuser/
+#https://drescher-immobilien.de/kaufangebote
+#https://www.luenendonk-immobilien.de/Objekte.htm
+#https://www.duerrenberger-immobilien.de/Angebote.htm
+#https://www.harinali.de/immobilienangebote/
+#https://www.aufrecht-immo.de/immobilien?t=2&o=&st=buy&pr=&qm=&r=
+#https://www.aufrecht-immo.de/immobilien?t=1&o=&st=buy&pr=&qm=&r=
+#https://www.ramonaneckar-immobilien.de/angebote
+#https://www.mytropper-immobilien.de/index.php4?cmd=searchResults&goto=1&alias=suchmaske&aktwaehrung=%80&kaufartids=1&kategorieids=&ortnamegenau=&flaecheKatAbhaengigMin=35.00&flaecheKatAbhaengigMax=686.00&preisMin=11.00&preisMax=1985000.00&zimmerMin=0.00&zimmerMax=15.00&objq%5Border_zusammen%5D=&objqorder_zusammen=#sprung_modul_suchmakse_0
+#https://www.sri-immo.de/immobilien-kaufen-mieten.html
+#https://www.immoservice-eder.de/immobilien-angebote/
+#https://zg-immobilien.de/
+#https://www.zardini-immobilien.de/haeuser.xhtml
+#https://www.zardini-immobilien.de/wohnungen.xhtml
+#https://www.reischl-immobilien.de/objects.php
+#https://gattinger-immo.de/angebote
+#https://www.dawonia.de/de/kaufen
 
-https://www.service-skimmo.de/immobilien#AktuelleAngebote
-https://hirschmann-kaul.de/kaufen/
-https://fuchsbau-immobilien.com/immobilienangebote/
-https://www.se-immobilienmakler.de/Haeuser-zum-Kauf.htm
-https://www.deutsche-bank-immobilien.de/immobilie-suchen/liste/1?sort=10&radius=25&offerType=1&latitude=48.13768&longitude=11.57599&regionalSearch=münchen&town=München
-https://www.wi-oberbayern.de/immobilienangebote/alle-angebote/
-https://www.immobilien-borchers.com/kaufen-und-mieten/
-https://www.kpcimmobilien.de/aktuelle-immobilienangebote/
-https://www.schaetz-immobilien.de/immobilien/haeuser/
-https://www.tell-immobilien.de/immobilien-haimhausen/
-https://www.hoser-immobilien.de
-https://brokavaria.de/#immobilien
-https://jannikzimmer.com/immobilienangebote/
-https://my.homeday.de/search?property_type=house&buying_price_max=850000&living_space_min=0&number_of_rooms_min=1&available_only=true&location=München&radius=20&latitude=48.1351253&longitude=11.5819806
-https://neckar-partner.de/immobilien/kaufen
+#https://www.service-skimmo.de/immobilien#AktuelleAngebote
+#https://hirschmann-kaul.de/kaufen/
+#https://fuchsbau-immobilien.com/immobilienangebote/
+#https://www.se-immobilienmakler.de/Haeuser-zum-Kauf.htm
+#https://www.deutsche-bank-immobilien.de/immobilie-suchen/liste/1?sort=10&radius=25&offerType=1&latitude=48.13768&longitude=11.57599&regionalSearch=münchen&town=München
+#https://www.wi-oberbayern.de/immobilienangebote/alle-angebote/
+#https://www.immobilien-borchers.com/kaufen-und-mieten/
+#https://www.kpcimmobilien.de/aktuelle-immobilienangebote/
+#https://www.schaetz-immobilien.de/immobilien/haeuser/
+#https://www.tell-immobilien.de/immobilien-haimhausen/
+#https://www.hoser-immobilien.de
+#https://brokavaria.de/#immobilien
+#https://jannikzimmer.com/immobilienangebote/
+#https://my.homeday.de/search?property_type=house&buying_price_max=850000&living_space_min=0&number_of_rooms_min=1&available_only=true&location=München&radius=20&latitude=48.1351253&longitude=11.5819806
+#https://neckar-partner.de/immobilien/kaufen
+
+# Brunner Immobilien
+https://brunnerimmobilien.de/immobilien-angebote/
+# CENTURY 21 Celeste & Co.
+https://century21.de/celeste-immobilien/immobilien
+# Christian Lösch Immobilien - Portalprofil
+https://www.immobilienscout24.de/anbieter/profil/christian-loesch
+# Clavis Immobilien
+https://www.clavisimmobilien.de/immobilien-muenchen-kaufen/
+# Connect & Select Immobilien
+https://www.connect-select.de/immobilien-angebote-muenchen/
+# Cosmos Real Estate
+https://cosmos-re.com/objektangebote/haeuser-kaufen.html
+# CvB-Immobilien - Portalprofil
+https://www.immobilienscout24.de/anbieter/profil/cvb-immobilien
+# FALC Immobilien
+https://www.falcimmo.de/immobilienangebote.html
+# Finanz & Bau Concept Immobilien
+https://fbcimmobilien.de/angebot/
+# Flemmer Immobilien
+https://www.flemmer-immobilien.de/angebote/
+# Finest Realestate
+https://www.finest-realestate.com/immobilien/
+# fmc Immobilien
+https://www.fmcag.de/immobilienangebote.xhtml
+# Immobilien Kolb
+https://immo-kolb.de/immobilien-vermarktungsart/kauf/
+# Immobilien M-Nord
+https://immobilien-mnord.de/immobiliensuche/
+# Immobilien Ried
+https://immobilien-ried.de/immobilien-angebote/
+# Immobilien-T-raum - eigene Website, Angebotsunterseite nicht eindeutig ermittelt
+https://immobilien-t-raum.de/immobilien#kauf
+# Immobilienprofis.Bayern
+https://www.immobilienprofis.bayern/angebot/
+# ImmoFerreira
+https://immo-bayern-muenchen.de/immobilien/
+# ImmoSpace
+https://www.immo-space.com/angebote/
+# JHomes Immobilien
+https://jhomes.de/immobilien-suche/
+# Kreissparkasse München-Starnberg-Ebersberg
+https://www.kskmse.de/de/home/service/immobilien.html
+# Kreipl Immobilien
+https://kreipl-immobilien.de/kaufobjekte
+# Lankes Immobilien
+https://lankes-immobilien.com/immobilien
+# Layer Immobilien & Bau
+https://layer-gruppe.de/immobilien
+# LB Immobilien
+https://www.lbbayernimmobilien.de/immobilien-kaufen#angebote
+# MIA CASA
+https://mia-casa-immobilien.de/immobilien/
+https://remax-living.de/immobilien/
+# von Ebbe Immobilien
+https://www.kve-immobilien.de/objekte/
+# Winterhalter Immobilien / Wintersperger Immobilien
+https://wintersperger.de/immobilien
+# Zenker & Günsch Immobilien
+https://zg-immobilien.de/kaufobjekte
+# DIAMANT IMMOBILIEN
+https://diamant-immobilien.de/immobilien/
+# Enoviahaus GmbH
+https://enoviahaus.de/angebot
+# GARANT Immobilien München GmbH
+https://www.garant-immo.de/immobilien
+# Gattinger Immobilien
+https://gattinger-immo.de/angebote
+# IMMOVISION
+https://www.immovision.de/immobilien
+# Kraft & Ziller Immobilien GbR
+https://www.kraft-ziller.de/Immobilien.htm
+# Lanzl GmbH
+https://lanzl-immobilien.de/immobilienangebote
+# MyImmoplus24 GmbH
+https://immoplusgmbh.eu/immobilien
+# Münchner IG Immobilienmanagement GmbH
+https://www.muenchner-ig.com/kaufen/immobilienangebote/
+# RAUM_IMMOBILIEN GmbH
+https://raum-immobilien.de/immobilie-kaufen/
+# Situli Immobilien GmbH - Domain verifiziert
+https://www.situli-immobilien.de/immobilien
+# FAIR-HOMES IMMOBILIEN
+https://www.fair-homes.immo/immobilien-kauf
+# immocom e. K.
+https://immocom.org/immobilien/
+# JP Hansen Immobilien GmbH
+https://jphansen-immobilien.de/portfolio
+# FM Immobilien
+https://www.fmimmobilien.com/immobilienangebot
+# Neukirchinger Immobilien
+https://neukirchinger-immobilien.de/immobilienangebot/
+# PlanetHome Group
+https://planethome.de/immobiliensuche/
+# RAUM_IMMOBILIEN
+https://raum-immobilien.de/immobilie_location/starnberg
+# Raiffeisen Immobilien Bad Tölz-Wolfratshausen
+https://raiffeisen-immo.de/immobilien/
+# Regina Höppner Makler Immobilien
+https://www.hoeppner-immobilien.com/Angebote.htm
+# rimaldi Immobilien
+https://www.rimaldi.de/immobilien-vermarktungsart/kauf/
+# Rosenberger Immobilien
+https://rosenbergerimmobilien.de/ff/immobilien
+# RPP Immobilien
+https://rpp-immo.de/aktuelle-immobilienangebote
+# RUDEK.IMMO
+https://rudek.immo/immobilienangebot
+# Schlagenhauf Immobilien
+https://www.schlagenhauf-immo.de/immobilie-kaufen.html
+# Seffen Immobilien
+https://seffen.immo/immobilien/
+# Siebenlist Immobilien
+https://www.siebenlist-immobilien.de/angebote
+# SONTONA Immobilien - eigene Website, Angebotsunterseite nicht eindeutig ermittelt
+https://www.sontona.de/immobilien/
+# Spanner & Steinhardt Wohnkonzepte
+https://www.steinhardtamsee.de/properties
+# Steve Hatton Immobilien
+http://hatton-immobilien.de/crbst_5.html
+# Szikora Immobilien
+https://www.szikora-immobilien.de/

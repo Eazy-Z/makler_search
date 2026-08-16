@@ -1,0 +1,20 @@
+{
+  "servers": {
+    "ymail-imap": {
+      "command": ".venv/bin/python",
+      "args": ["ymail_mcp_server.py"],
+      "env": {
+        "YMAIL_ADDRESS": "melinamarrek@ymail.com",
+        "YMAIL_APP_PASSWORD": "${input:ymail-app-password}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "ymail-app-password",
+      "description": "Yahoo app password",
+      "password": true
+    }
+  ]
+}

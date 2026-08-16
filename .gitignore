@@ -8,3 +8,4 @@ infra/main.parameters.json
 infra/main.json
 credentials.json
 token.json
+ymail_token.json

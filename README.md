@@ -53,3 +53,35 @@ identity. The container URL can be overridden with
 
 - The project uses only the Python standard library.
 - Broker pages differ, so parsers are source-specific.
+
+## Yahoo Mail-Auswertungen
+
+Die Yahoo-Gegenstücke zu den Gmail-Skripten verwenden IMAP. Empfohlen ist ein
+Yahoo-App-Passwort:
+
+```bash
+export YMAIL_ADDRESS='melinamarrek@ymail.com'
+export YMAIL_APP_PASSWORD='DEIN_YAHOO_APP_PASSWORT'
+```
+
+Alternativ kann OAuth 2.0 mit `XOAUTH2` verwendet werden. Dafür vor dem ersten
+Aufruf eine Yahoo-App registrieren und folgende Variablen setzen:
+
+```bash
+export YMAIL_ADDRESS='melinamarrek@ymail.com'
+export YMAIL_CLIENT_ID='...'
+export YMAIL_CLIENT_SECRET='...'
+# Muss exakt als Redirect-URL in der Yahoo-App registriert sein.
+export YMAIL_REDIRECT_URI='http://127.0.0.1:8765/'
+```
+
+Beim ersten Start öffnet sich der Yahoo-Login im Browser. Der Token wird
+danach lokal in `ymail_token.json` gespeichert und bei Ablauf automatisch mit
+dem Refresh Token erneuert. Die Datei darf nicht ins Repository gelangen.
+
+Danach stehen `ymail_test.py`, `scripts/ymail_contacts.py`,
+`scripts/ymail_immoscout_brokers.py`, `scripts/ymail_immowelt_brokers.py` und
+`scripts/ymail_kleinanzeigen_inquiries.py` zur Verfügung. Die beiden
+Broker-Skripte akzeptieren optional `--folder`; die Absender- bzw.
+Betrefffilter können mit `--from-address` bzw. `--subject` überschrieben
+werden. `ymail_contacts.py` durchsucht standardmäßig `INBOX` und `Sent`.
