@@ -120,7 +120,6 @@ H�user zum Kauf | Sopart Immobilien GmbH
 #https://www.rogers-immobilien.de/immobilienangebote/
 #https://rohrer-firmengruppe.de/immobilien-vermarktung/immobilien.html
 #https://www.ftimmobilien24.com/aktuelle-immobilien/bestandsobjekte/
-#https://www.fischer-immobilien-muenchen.de/immobilien/
 #https://citigrund.de/immobilie-kaufen-muenchen/
 #https://wandl.immobilien/aktuelle-immobilien/ 
 #https://www.emslander-co.de/immobilien/
@@ -195,123 +194,159 @@ H�user zum Kauf | Sopart Immobilien GmbH
 #https://neckar-partner.de/immobilien/kaufen
 
 # Brunner Immobilien
-https://brunnerimmobilien.de/immobilien-angebote/
+#https://brunnerimmobilien.de/immobilien-angebote/
 # CENTURY 21 Celeste & Co.
-https://century21.de/celeste-immobilien/immobilien
+#https://century21.de/celeste-immobilien/immobilien
 # Christian Lösch Immobilien - Portalprofil
-https://www.immobilienscout24.de/anbieter/profil/christian-loesch
+#https://www.immobilienscout24.de/anbieter/profil/christian-loesch
 # Clavis Immobilien
-https://www.clavisimmobilien.de/immobilien-muenchen-kaufen/
+#https://www.clavisimmobilien.de/immobilien-muenchen-kaufen/
 # Connect & Select Immobilien
-https://www.connect-select.de/immobilien-angebote-muenchen/
+#https://www.connect-select.de/immobilien-angebote-muenchen/
 # Cosmos Real Estate
-https://cosmos-re.com/objektangebote/haeuser-kaufen.html
+#https://cosmos-re.com/objektangebote/haeuser-kaufen.html
 # CvB-Immobilien - Portalprofil
-https://www.immobilienscout24.de/anbieter/profil/cvb-immobilien
+#https://www.immobilienscout24.de/anbieter/profil/cvb-immobilien
 # FALC Immobilien
-https://www.falcimmo.de/immobilienangebote.html
+#https://www.falcimmo.de/immobilienangebote.html
 # Finanz & Bau Concept Immobilien
-https://fbcimmobilien.de/angebot/
+#https://fbcimmobilien.de/angebot/
 # Flemmer Immobilien
-https://www.flemmer-immobilien.de/angebote/
+#https://www.flemmer-immobilien.de/angebote/
 # Finest Realestate
-https://www.finest-realestate.com/immobilien/
+#https://www.finest-realestate.com/immobilien/
 # fmc Immobilien
-https://www.fmcag.de/immobilienangebote.xhtml
+#https://www.fmcag.de/immobilienangebote.xhtml
 # Immobilien Kolb
-https://immo-kolb.de/immobilien-vermarktungsart/kauf/
+#https://immo-kolb.de/immobilien-vermarktungsart/kauf/
 # Immobilien M-Nord
-https://immobilien-mnord.de/immobiliensuche/
+#https://immobilien-mnord.de/immobiliensuche/
 # Immobilien Ried
-https://immobilien-ried.de/immobilien-angebote/
+#https://immobilien-ried.de/immobilien-angebote/
 # Immobilien-T-raum - eigene Website, Angebotsunterseite nicht eindeutig ermittelt
-https://immobilien-t-raum.de/immobilien#kauf
+#https://immobilien-t-raum.de/immobilien#kauf
 # Immobilienprofis.Bayern
-https://www.immobilienprofis.bayern/angebot/
+#https://www.immobilienprofis.bayern/angebot/
 # ImmoFerreira
-https://immo-bayern-muenchen.de/immobilien/
+#https://immo-bayern-muenchen.de/immobilien/
 # ImmoSpace
-https://www.immo-space.com/angebote/
+#https://www.immo-space.com/angebote/
 # JHomes Immobilien
-https://jhomes.de/immobilien-suche/
+#https://jhomes.de/immobilien-suche/
 # Kreissparkasse München-Starnberg-Ebersberg
-https://www.kskmse.de/de/home/service/immobilien.html
+#https://www.kskmse.de/de/home/service/immobilien.html
 # Kreipl Immobilien
-https://kreipl-immobilien.de/kaufobjekte
+#https://kreipl-immobilien.de/kaufobjekte
 # Lankes Immobilien
-https://lankes-immobilien.com/immobilien
+#https://lankes-immobilien.com/immobilien
 # Layer Immobilien & Bau
-https://layer-gruppe.de/immobilien
+#https://layer-gruppe.de/immobilien
 # LB Immobilien
-https://www.lbbayernimmobilien.de/immobilien-kaufen#angebote
+#https://www.lbbayernimmobilien.de/immobilien-kaufen#angebote
 # MIA CASA
-https://mia-casa-immobilien.de/immobilien/
-https://remax-living.de/immobilien/
+#https://mia-casa-immobilien.de/immobilien/
+#https://remax-living.de/immobilien/
 # von Ebbe Immobilien
-https://www.kve-immobilien.de/objekte/
+#https://www.kve-immobilien.de/objekte/
 # Winterhalter Immobilien / Wintersperger Immobilien
-https://wintersperger.de/immobilien
+#https://wintersperger.de/immobilien
 # Zenker & Günsch Immobilien
-https://zg-immobilien.de/kaufobjekte
+#https://zg-immobilien.de/kaufobjekte
 # DIAMANT IMMOBILIEN
-https://diamant-immobilien.de/immobilien/
+#https://diamant-immobilien.de/immobilien/
 # Enoviahaus GmbH
-https://enoviahaus.de/angebot
+#https://enoviahaus.de/angebot
 # GARANT Immobilien München GmbH
-https://www.garant-immo.de/immobilien
+#https://www.garant-immo.de/immobilien
 # Gattinger Immobilien
-https://gattinger-immo.de/angebote
+#https://gattinger-immo.de/angebote
 # IMMOVISION
-https://www.immovision.de/immobilien
+#https://www.immovision.de/immobilien
 # Kraft & Ziller Immobilien GbR
-https://www.kraft-ziller.de/Immobilien.htm
+#https://www.kraft-ziller.de/Immobilien.htm
 # Lanzl GmbH
-https://lanzl-immobilien.de/immobilienangebote
+#https://lanzl-immobilien.de/immobilienangebote
 # MyImmoplus24 GmbH
-https://immoplusgmbh.eu/immobilien
+#https://immoplusgmbh.eu/immobilien
 # Münchner IG Immobilienmanagement GmbH
-https://www.muenchner-ig.com/kaufen/immobilienangebote/
+#https://www.muenchner-ig.com/kaufen/immobilienangebote/
 # RAUM_IMMOBILIEN GmbH
-https://raum-immobilien.de/immobilie-kaufen/
+#https://raum-immobilien.de/immobilie-kaufen/
 # Situli Immobilien GmbH - Domain verifiziert
-https://www.situli-immobilien.de/immobilien
+#https://www.situli-immobilien.de/immobilien
 # FAIR-HOMES IMMOBILIEN
-https://www.fair-homes.immo/immobilien-kauf
+#https://www.fair-homes.immo/immobilien-kauf
 # immocom e. K.
-https://immocom.org/immobilien/
+#https://immocom.org/immobilien/
 # JP Hansen Immobilien GmbH
-https://jphansen-immobilien.de/portfolio
+#https://jphansen-immobilien.de/portfolio
 # FM Immobilien
-https://www.fmimmobilien.com/immobilienangebot
+#https://www.fmimmobilien.com/immobilienangebot
 # Neukirchinger Immobilien
-https://neukirchinger-immobilien.de/immobilienangebot/
+#https://neukirchinger-immobilien.de/immobilienangebot/
 # PlanetHome Group
-https://planethome.de/immobiliensuche/
+#https://planethome.de/immobiliensuche/
 # RAUM_IMMOBILIEN
-https://raum-immobilien.de/immobilie_location/starnberg
+#https://raum-immobilien.de/immobilie_location/starnberg
 # Raiffeisen Immobilien Bad Tölz-Wolfratshausen
-https://raiffeisen-immo.de/immobilien/
+#https://raiffeisen-immo.de/immobilien/
 # Regina Höppner Makler Immobilien
-https://www.hoeppner-immobilien.com/Angebote.htm
+#https://www.hoeppner-immobilien.com/Angebote.htm
 # rimaldi Immobilien
-https://www.rimaldi.de/immobilien-vermarktungsart/kauf/
+#https://www.rimaldi.de/immobilien-vermarktungsart/kauf/
 # Rosenberger Immobilien
-https://rosenbergerimmobilien.de/ff/immobilien
+#https://rosenbergerimmobilien.de/ff/immobilien
 # RPP Immobilien
-https://rpp-immo.de/aktuelle-immobilienangebote
+#https://rpp-immo.de/aktuelle-immobilienangebote
 # RUDEK.IMMO
-https://rudek.immo/immobilienangebot
+#https://rudek.immo/immobilienangebot
 # Schlagenhauf Immobilien
-https://www.schlagenhauf-immo.de/immobilie-kaufen.html
+#https://www.schlagenhauf-immo.de/immobilie-kaufen.html
 # Seffen Immobilien
-https://seffen.immo/immobilien/
+#https://seffen.immo/immobilien/
 # Siebenlist Immobilien
-https://www.siebenlist-immobilien.de/angebote
+#https://www.siebenlist-immobilien.de/angebote
 # SONTONA Immobilien - eigene Website, Angebotsunterseite nicht eindeutig ermittelt
-https://www.sontona.de/immobilien/
+#https://www.sontona.de/immobilien/
 # Spanner & Steinhardt Wohnkonzepte
-https://www.steinhardtamsee.de/properties
+#https://www.steinhardtamsee.de/properties
 # Steve Hatton Immobilien
-http://hatton-immobilien.de/crbst_5.html
+#http://hatton-immobilien.de/crbst_5.html
 # Szikora Immobilien
-https://www.szikora-immobilien.de/
+#https://www.szikora-immobilien.de/
+# Gröbmair Immobilien
+#https://www.groebmair-immobilien.de/immobilien/
+# WOHNWELT IMMOBILIEN
+#https://www.wohnwelt-immobilien.de/immobilien/
+# Agentur Fröhlich
+#https://agenturfroehlich.de/
+# Isar Domizil
+#https://isardomizil.de/kaufangebote/
+# Eigenwert Wohnimmobilien München
+#https://www.eigenwert.de/angebote/kaufen/
+# ProEigentum Immobilien
+#https://www.proeigentum.de/suchende/immobilien/muenchen/kaufen/
+# RIEDEL Immobilien
+#https://www.riedel-immobilien.de/angebote/kauf/
+# SteGe Immobilien
+#https://stege-immo.de/angebote/
+# Eichler Immobilien
+#https://eichler.de/wohnung-haus-kaufen-mieten-muenchen/
+# Dr. Grosdidier Immobilien
+#https://grosdidier.de/angebote
+# Immobilien im Franziskanerhof
+#https://www.immobilien-im-franziskanerhof.de/aktuelle-angebote.xhtml
+# Weyland Immobilien
+#https://www.weyland-immobilien.de/Angebote.htm
+# Achmüller Immobilien
+#https://www.achmueller-immo.de/immobilienuebersicht/
+# Immobilien Plank
+#https://www.immobilien-plank.de/kauf-wohnung.php
+# OPUS CONCEPT Immobilien
+#https://www.opusconcept-immobilien.de/immobilien/
+# IMMONEB Immobilien
+#https://www.immoneb.de/immobilien-angebote/
+# Quattro Quarti Immobilien
+#https://quattro-quarti.de/immobilien/
+# ZM LIVING
+#https://www.zmliving.de/objekte/

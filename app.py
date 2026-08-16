@@ -572,6 +572,23 @@ SEFFEN_URL = 'https://seffen.immo/immobilien/'
 SIEBENLIST_URL = 'https://www.siebenlist-immobilien.de/angebote'
 HATTON_URL = 'https://hatton-immobilien.de/crbst_5.html'
 SZIKORA_URL = 'https://www.szikora-immobilien.de/'
+GROEBMAIR_URL = 'https://www.groebmair-immobilien.de/immobilien/'
+WOHNWELT_URL = 'https://www.wohnwelt-immobilien.de/immobilien/'
+AGENTUR_FROEHLICH_URL = 'https://agenturfroehlich.de/'
+ISAR_DOMIZIL_URL = 'https://isardomizil.de/kaufangebote/'
+EIGENWERT_URL = 'https://www.eigenwert.de/angebote/kaufen/'
+PROEIGENTUM_URL = 'https://www.proeigentum.de/suchende/immobilien/muenchen/kaufen/'
+STEGE_URL = 'https://stege-immo.de/angebote/'
+EICHLER_URL = 'https://eichler.de/wohnung-haus-kaufen-muenchen/'
+GROSDIDIER_URL = 'https://grosdidier.de/angebote'
+FRANZISKANERHOF_URL = 'https://www.immobilien-im-franziskanerhof.de/aktuelle-angebote.xhtml'
+WEYLAND_URL = 'https://www.weyland-immobilien.de/Angebote.htm'
+ACHMUELLER_URL = 'https://www.achmueller-immo.de/immobilienuebersicht/'
+PLANK_URL = 'https://www.immobilien-plank.de/kauf-wohnung.php'
+OPUS_CONCEPT_URL = 'https://www.opusconcept-immobilien.de/immobilien/'
+IMMONEB_URL = 'https://www.immoneb.de/immobilien-angebote/'
+QUATTRO_QUARTI_URL = 'https://quattro-quarti.de/immobilien/'
+ZM_LIVING_URL = 'https://www.zmliving.de/objekte/'
 UNKNOWN_LOCATION = 'N/A'
 BROKER_LABELS = {
     'clavis': 'Clavis Immobilien',
@@ -613,6 +630,23 @@ BROKER_LABELS = {
     'weiherer': 'Weiherer Immobilien',
     'mb': 'MB Immobilien',
     'fischer': 'Fischer Immobilien München',
+    'groebmair': 'Gröbmair Immobilien',
+    'wohnwelt': 'WOHNWELT Immobilien',
+    'agentur-froehlich': 'Agentur Fröhlich',
+    'isar-domizil': 'Isar Domizil',
+    'eigenwert': 'Eigenwert Wohnimmobilien München',
+    'proeigentum': 'ProEigentum Immobilien',
+    'stege': 'SteGe Immobilien',
+    'eichler': 'Eichler Immobilien',
+    'grosdidier': 'Dr. Grosdidier Immobilien',
+    'franziskanerhof': 'Immobilien im Franziskanerhof',
+    'weyland': 'Weyland Immobilien',
+    'achmueller': 'Achmüller Immobilien',
+    'plank': 'Immobilien Plank',
+    'opus-concept': 'OPUS CONCEPT Immobilien',
+    'immoneb': 'IMMONEB Immobilien',
+    'quattro-quarti': 'Quattro Quarti Immobilien',
+    'zm-living': 'ZM LIVING',
     'heimhuber': 'Heimhuber Immobilien',
     'citigrund': 'Citigrund Immobilien',
     'georgi': 'Georgi Immobilien',
@@ -6132,6 +6166,23 @@ BROKER_SOURCES = [
     ('weiherer', fetch_weiherer_listings),
     ('mb', fetch_mb_listings),
     ('fischer', fetch_fischer_listings),
+    ('groebmair', lambda: fetch_source_specific_broker_listings(GROEBMAIR_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose|angebot|kauf)')),
+    ('wohnwelt', lambda: fetch_source_specific_broker_listings(WOHNWELT_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose|angebot|kauf)')),
+    ('agentur-froehlich', lambda: fetch_source_specific_broker_listings(AGENTUR_FROEHLICH_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose|angebot|kauf)')),
+    ('isar-domizil', lambda: fetch_source_specific_broker_listings(ISAR_DOMIZIL_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose|angebot|kauf)')),
+    ('eigenwert', lambda: fetch_source_specific_broker_listings(EIGENWERT_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(expose|immobilie|objekt)')),
+    ('proeigentum', lambda: fetch_source_specific_broker_listings(PROEIGENTUM_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(expose|immobilie|objekt)')),
+    ('stege', lambda: fetch_external_broker_listings(STEGE_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')),
+    ('eichler', lambda: fetch_source_specific_broker_listings(EICHLER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(angebot|expose|immobilie|objekt)')),
+    ('grosdidier', lambda: fetch_source_specific_broker_listings(GROSDIDIER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(objects|immobilie|objekt)')),
+    ('franziskanerhof', lambda: fetch_source_specific_broker_listings(FRANZISKANERHOF_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobiliendetails|immobilie|objekt)')),
+    ('weyland', lambda: fetch_source_specific_broker_listings(WEYLAND_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(searchDetails|immobilie|objekt|expose)')),
+    ('achmueller', lambda: fetch_source_specific_broker_listings(ACHMUELLER_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose)')),
+    ('plank', lambda: fetch_source_specific_broker_listings(PLANK_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(detail|immobilie|objekt)')),
+    ('opus-concept', lambda: fetch_source_specific_broker_listings(OPUS_CONCEPT_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose)')),
+    ('immoneb', lambda: fetch_external_broker_listings(IMMONEB_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)')),
+    ('quattro-quarti', lambda: fetch_source_specific_broker_listings(QUATTRO_QUARTI_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(immobilie|objekt|expose)')),
+    ('zm-living', lambda: fetch_source_specific_broker_listings(ZM_LIVING_URL, r'(immobilie|objekt|expose|angebot|kauf|haus|wohnung)', r'(objekte|immobilie|objekt|expose)')),
     ('heimhuber', fetch_heimhuber_listings),
     ('citigrund', fetch_citigrund_listings),
     ('georgi', fetch_georgi_listings),

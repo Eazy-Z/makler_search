@@ -41,6 +41,19 @@ def test_static_family_sources_register_flemmer():
     assert sum(source[0] == 'flemmer' for source in app.BROKER_SOURCES) == 1
 
 
+def test_new_broker_sources_are_registered_once():
+    expected = {
+        'groebmair', 'wohnwelt', 'agentur-froehlich', 'isar-domizil',
+        'eigenwert', 'proeigentum', 'stege', 'eichler', 'grosdidier',
+        'franziskanerhof', 'weyland', 'achmueller', 'plank',
+        'opus-concept', 'immoneb', 'quattro-quarti', 'zm-living',
+    }
+    registered = [key for key, _fetcher in app.BROKER_SOURCES]
+
+    assert expected.issubset(registered)
+    assert all(registered.count(key) == 1 for key in expected)
+
+
 def test_static_zero_result_broker_parsers_accept_current_field_markup():
     schloss = '''<div class="inx-property-list__item-wrap"><div><div><div>
     <div class="inx-property-list-item__title"><a href="/immobilien/haus">Haus in München</a></div>
